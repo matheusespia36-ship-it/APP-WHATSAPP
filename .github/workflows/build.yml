@@ -116,7 +116,7 @@ jobs:
 
           if not os.path.exists(main + '/cpp/native-lib.cpp'):
               open(main + '/cpp/native-lib.cpp', 'w').write(NATIVE)
-                    open(main + '/cpp/CMakeLists.txt', 'w').write(CMAKE)
+          open(main + '/cpp/CMakeLists.txt', 'w').write(CMAKE)
           p = 'android/app/build.gradle'
           s = open(p).read()
           if 'externalNativeBuild' not in s:
