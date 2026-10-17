@@ -685,12 +685,35 @@ textarea { resize: vertical; min-height: 72px; }
     }
   }
 
+   var lastSig = '';
+
+  function sig() {
+    return JSON.stringify([
+      state.waStatus, state.qrImage, state.groups.length,
+      state.dispatches.map(function (d) {
+        return [d.slug, d.name, d.active, d.lastRunHM, d.lastSentAt, d.schedValue, d.groupName, d.lastMessage && d.lastMessage.fileName];
+      }),
+      state.history.length, state.history[0] && state.history[0].id
+    ]);
+  }
+
+  function safeRender() {
+    var a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return false;
+    var b = document.querySelector('.screen:not([hidden]) .body');
+    var y = b ? b.scrollTop : 0;
+    RENDER[state.screen]();
+    var nb = document.querySelector('.screen:not([hidden]) .body');
+    if (nb) nb.scrollTop = y;
+    return true;
+  }
+
   async function pollBackendData() {
     try {
       var data = await api('/status');
       state.waStatus = data.whatsapp || 'verificando';
       if (data.qr) state.qrImage = data.qr;
-      
+
       try {
         var dData = await api('/dispatches');
         if (dData.dispatches) state.dispatches = dData.dispatches;
@@ -709,7 +732,10 @@ textarea { resize: vertical; min-height: 72px; }
     } catch (e) {
       state.waStatus = 'offline';
     }
-    if (['conn', 'home', 'hist'].indexOf(state.screen) !== -1) RENDER[state.screen]();
+    var s = sig();
+    if (s !== lastSig && ['conn', 'home', 'hist'].indexOf(state.screen) !== -1) {
+      if (safeRender()) lastSig = s;
+    }
   }
 
   setInterval(pollBackendData, 4000);
