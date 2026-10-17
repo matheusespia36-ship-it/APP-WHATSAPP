@@ -23,51 +23,119 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
-      - name: Baixar e Extrair Motor Node.js Nativo para Android ARM64
+      - name: Conferir arquivos do backend
         run: |
-          sudo apt-get update && sudo apt-get install -y tar zip wget
-          mkdir -p lib_node_temp
-          wget https://nodejs.org/dist/v22.9.0/node-v22.9.0-linux-arm64.tar.xz -O node_native.tar.xz
-          tar -xf node_native.tar.xz
-          NODE_BIN=$(find node-v22.9.0-linux-arm64 -type f -name "node" | head -n 1)
-          if [ -n "$NODE_BIN" ]; then
-            cp "$NODE_BIN" lib_node_temp/libnode.so
-            echo "[SUCESSO] Motor binario real do Node.js ARM64 mapeado com sucesso!"
-          else
-            echo "Erro fatal: Binario bin/node nao encontrado no pacote oficial." && exit 1
-          fi
+          ls -la
+          for f in server.js bootstrap.js package.json public/index.html capacitor.config.json; do
+            [ -f "$f" ] || { echo "Erro fatal: falta $f na raiz do repositorio."; exit 1; }
+          done
+          grep -q startNodeWithArguments android/app/src/main/java/com/disparador/app/MainActivity.java \
+            || { echo "Erro fatal: MainActivity.java customizado nao encontrado em android/app/src/main/java/com/disparador/app/"; exit 1; }
 
-      - name: Listar arquivos
-        run: ls -la
+      - name: Baixar libnode.so e headers (nodejs-mobile) para ARM64
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo digidem/nodejs-mobile --pattern 'nodejs-mobile-android-[0-9]*.zip' --output nm.zip
+          unzip -q nm.zip -d nm
+          find nm -maxdepth 4 | head -40
+          mkdir -p lib_node_temp lib_node_headers
+          LIB=$(find nm -path "*arm64-v8a*" -name libnode.so | head -n 1)
+          HDR=$(find nm -name node.h | head -n 1)
+          [ -n "$LIB" ] || { echo "Erro fatal: libnode.so arm64-v8a nao encontrado no zip."; exit 1; }
+          [ -n "$HDR" ] || { echo "Erro fatal: node.h nao encontrado no zip."; exit 1; }
+          cp "$LIB" lib_node_temp/libnode.so
+          cp -r "$(dirname "$HDR")"/. lib_node_headers/
+          ls -lh lib_node_temp/libnode.so
 
-      - name: Preparar Projeto e Sincronizar Assets
+      - name: Preparar Projeto Android
         run: |
           npm install --no-audit --no-fund
+          npm install @capacitor/core@6.0.0 @capacitor/android@6.0.0 @capacitor/cli@6.0.0 --no-save --no-audit --no-fund
           mkdir -p www
           cp public/index.html www/index.html
-          npm install @capacitor/core@6.0.0 @capacitor/android@6.0.0 @capacitor/cli@6.0.0 --save
+
+          # Guarda o Java customizado, recria o projeto e devolve o Java
+          rm -rf /tmp/custom_java /tmp/custom_cpp
+          cp -r android/app/src/main/java /tmp/custom_java
+          [ -d android/app/src/main/cpp ] && cp -r android/app/src/main/cpp /tmp/custom_cpp || true
           rm -rf android
-          npx capacitor add android
-          npx capacitor sync android
+          npx cap add android
+          rm -rf android/app/src/main/java
+          cp -r /tmp/custom_java android/app/src/main/java
+          [ -d /tmp/custom_cpp ] && cp -r /tmp/custom_cpp android/app/src/main/cpp || true
+          npx cap sync android
 
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          cp lib_node_temp/libnode.so android/app/src/main/jniLibs/arm64-v8a/
-
-          mkdir -p android/app/src/main/assets/nodejs-project/public
-          cp public/nodejs/server.js public/nodejs/bootstrap.js public/nodejs/package.json android/app/src/main/assets/nodejs-project/
-          cp -r node_modules android/app/src/main/assets/nodejs-project/
-          cp public/index.html android/app/src/main/assets/nodejs-project/public/
-
-          sed -i 's/<application/<application android:usesCleartextTraffic="true" android:extractNativeLibs="true" /' android/app/src/main/AndroidManifest.xml
-
-      - name: Compilar APK Debug
+      - name: Ligar libnode.so ao projeto (JNI + CMake)
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          MAIN=android/app/src/main
+          mkdir -p $MAIN/jniLibs/arm64-v8a $MAIN/cpp/include/node
+          cp lib_node_temp/libnode.so $MAIN/jniLibs/arm64-v8a/libnode.so
+          cp -r lib_node_headers/. $MAIN/cpp/include/node/
 
-      - name: Disponibilizar APK para Download
-        uses: actions/upload-artifact@v4
-        with:
-          name: Disparador-WhatsApp-Local-Autonomo
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f $MAIN/cpp/native-lib.cpp ]; then
+          cat > $MAIN/cpp/native-lib.cpp << 'EOF'
+          #include <jni.h>
+          #include <string.h>
+          #include <stdlib.h>
+          #include "node.h"
+
+          extern "C" JNIEXPORT jint JNICALL
+          Java_com_disparador_app_MainActivity_startNodeWithArguments(JNIEnv* env, jobject, jobjectArray arguments) {
+            jsize argc = env->GetArrayLength(arguments);
+            size_t total = 0;
+            for (int i = 0; i < argc; i++) {
+              jstring s = (jstring)env->GetObjectArrayElement(arguments, i);
+              const char* c = env->GetStringUTFChars(s, 0);
+              total += strlen(c) + 1;
+              env->ReleaseStringUTFChars(s, c);
+            }
+            char* buf = (char*)calloc(total, sizeof(char));
+            char** argv = (char**)calloc(argc, sizeof(char*));
+            char* cur = buf;
+            for (int i = 0; i < argc; i++) {
+              jstring s = (jstring)env->GetObjectArrayElement(arguments, i);
+              const char* c = env->GetStringUTFChars(s, 0);
+              strncpy(cur, c, strlen(c));
+              argv[i] = cur;
+              cur += strlen(c) + 1;
+              env->ReleaseStringUTFChars(s, c);
+            }
+            return jint(node::Start(argc, argv));
+          }
+          EOF
+          fi
+
+          if [ ! -f $MAIN/cpp/CMakeLists.txt ]; then
+          cat > $MAIN/cpp/CMakeLists.txt << 'EOF'
+          cmake_minimum_required(VERSION 3.18.1)
+          project("native-lib")
+          include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/node)
+          add_library(node SHARED IMPORTED)
+          set_target_properties(node PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libnode.so)
+          add_library(native-lib SHARED native-lib.cpp)
+          target_link_libraries(native-lib node log)
+          EOF
+          fi
+
+          # Liga o CMake no build.gradle e fixa arm64 e minSdk 24
+          python3 - << 'EOF'
+          p = 'android/app/build.gradle'
+          s = open(p).read()
+          if 'externalNativeBuild' not in s:
+              s = s.replace('android {', 'android {\n    externalNativeBuild {\n        cmake {\n            path "src/main/cpp/CMakeLists.txt"\n        }\n    }', 1)
+              s = s.replace('defaultConfig {', 'defaultConfig {\n        ndk { abiFilters "arm64-v8a" }\n        externalNativeBuild { cmake { arguments "-DANDROID_STL=c++_shared" } }', 1)
+              open(p, 'w').write(s)
+          EOF
+          sed -i -E 's/minSdkVersion = [0-9]+/minSdkVersion = 24/' android/variables.gradle
+
+      - name: Copiar backend e dependencias
+        run: |
+          NP=android/app/src/main/assets/nodejs-project
+          mkdir -p $NP/public
+          cp server.js bootstrap.js package.json $NP/
+          cp public/index.html $NP/public/
+          (cd $NP && npm install --omit=dev --no-audit --no-fund --ignore-scripts)
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q usesCleartextTraffic $M || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $M
+          grep -q ex
