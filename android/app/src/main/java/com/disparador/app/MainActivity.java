@@ -28,8 +28,9 @@ public class MainActivity extends BridgeActivity {
                 File filesDir = context.getFilesDir();
                 File nodeDir = new File(filesDir, "nodejs-project");
 
-                File serverFile = new File(nodeDir, "server.js");
-                if (!serverFile.exists()) {
+                File serverFile = new File(nodeDir, "bootstrap.js");
+                    if (true) {
+                       deleteRecursive(nodeDir);
                     Log.d("NODEJS-SERVER", "Extraindo assets do Node.js para o armazenamento interno...");
                     copiarAssetPasta(context, "nodejs-project", nodeDir);
                 }
@@ -64,6 +65,14 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             Log.e("NODEJS-SERVER", "Erro ao copiar pasta: " + path, e);
         }
+    }
+
+    private void deleteRecursive(File f) {
+    if (f.isDirectory()) {
+        File[] filhos = f.listFiles();
+        if (filhos != null) for (File c : filhos) deleteRecursive(c);
+    }
+    f.delete();
     }
 
     private void copiarAssetFicheiro(Context context, String assetPath, File destFile) {
