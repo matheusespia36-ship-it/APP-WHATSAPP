@@ -30,7 +30,7 @@ jobs:
             [ -f "$f" ] || { echo "Erro fatal: falta $f na raiz do repositorio."; exit 1; }
           done
           grep -q startNodeWithArguments android/app/src/main/java/com/disparador/app/MainActivity.java \
-            || { echo "Erro fatal: MainActivity.java customizado nao encontrado em android/app/src/main/java/com/disparador/app/"; exit 1; }
+            || { echo "Erro fatal: MainActivity.java customizado nao encontrado"; exit 1; }
 
       - name: Baixar libnode.so e headers (nodejs-mobile) para ARM64
         env:
@@ -54,28 +54,28 @@ jobs:
           npm install @capacitor/core@6.0.0 @capacitor/android@6.0.0 @capacitor/cli@6.0.0 --no-save --no-audit --no-fund
           mkdir -p www
           cp public/index.html www/index.html
-
-          # Guarda o Java customizado, recria o projeto e devolve o Java
           rm -rf /tmp/custom_java /tmp/custom_cpp
           cp -r android/app/src/main/java /tmp/custom_java
-          [ -d android/app/src/main/cpp ] && cp -r android/app/src/main/cpp /tmp/custom_cpp || true
+          if [ -d android/app/src/main/cpp ]; then cp -r android/app/src/main/cpp /tmp/custom_cpp; fi
           rm -rf android
           npx cap add android
           rm -rf android/app/src/main/java
           cp -r /tmp/custom_java android/app/src/main/java
-          [ -d /tmp/custom_cpp ] && cp -r /tmp/custom_cpp android/app/src/main/cpp || true
+          if [ -d /tmp/custom_cpp ]; then cp -r /tmp/custom_cpp android/app/src/main/cpp; fi
           npx cap sync android
 
       - name: Ligar libnode.so ao projeto (JNI + CMake)
+        shell: python
         run: |
-          MAIN=android/app/src/main
-          mkdir -p $MAIN/jniLibs/arm64-v8a $MAIN/cpp/include/node
-          cp lib_node_temp/libnode.so $MAIN/jniLibs/arm64-v8a/libnode.so
-          cp -r lib_node_headers/. $MAIN/cpp/include/node/
+          import os, re, shutil
 
-          if [ ! -f $MAIN/cpp/native-lib.cpp ]; then
-          cat > $MAIN/cpp/native-lib.cpp << 'EOF'
-          #include <jni.h>
+          main = 'android/app/src/main'
+          os.makedirs(main + '/jniLibs/arm64-v8a', exist_ok=True)
+          os.makedirs(main + '/cpp/include/node', exist_ok=True)
+          shutil.copy('lib_node_temp/libnode.so', main + '/jniLibs/arm64-v8a/libnode.so')
+          shutil.copytree('lib_node_headers', main + '/cpp/include/node', dirs_exist_ok=True)
+
+          NATIVE = """#include <jni.h>
           #include <string.h>
           #include <stdlib.h>
           #include "node.h"
@@ -103,34 +103,36 @@ jobs:
             }
             return jint(node::Start(argc, argv));
           }
-          EOF
-          fi
+          """
 
-          if [ ! -f $MAIN/cpp/CMakeLists.txt ]; then
-          cat > $MAIN/cpp/CMakeLists.txt << 'EOF'
-          cmake_minimum_required(VERSION 3.18.1)
+          CMAKE = """cmake_minimum_required(VERSION 3.18.1)
           project("native-lib")
           include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/node)
           add_library(node SHARED IMPORTED)
           set_target_properties(node PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libnode.so)
           add_library(native-lib SHARED native-lib.cpp)
           target_link_libraries(native-lib node log)
-          EOF
-          fi
+          """
 
-          # Liga o CMake no build.gradle e fixa arm64 e minSdk 24
-          python3 - << 'EOF'
+          if not os.path.exists(main + '/cpp/native-lib.cpp'):
+              open(main + '/cpp/native-lib.cpp', 'w').write(NATIVE)
+          if not os.path.exists(main + '/cpp/CMakeLists.txt'):
+              open(main + '/cpp/CMakeLists.txt', 'w').write(CMAKE)
+
           p = 'android/app/build.gradle'
           s = open(p).read()
           if 'externalNativeBuild' not in s:
               s = s.replace('android {', 'android {\n    externalNativeBuild {\n        cmake {\n            path "src/main/cpp/CMakeLists.txt"\n        }\n    }', 1)
               s = s.replace('defaultConfig {', 'defaultConfig {\n        ndk { abiFilters "arm64-v8a" }\n        externalNativeBuild { cmake { arguments "-DANDROID_STL=c++_shared" } }', 1)
               open(p, 'w').write(s)
-          EOF
-          sed -i -E 's/minSdkVersion = [0-9]+/minSdkVersion = 24/' android/variables.gradle
 
-            - name: Copiar backend e dependencias
-           run: |
+          v = 'android/variables.gradle'
+          t = open(v).read()
+          open(v, 'w').write(re.sub(r'minSdkVersion = \d+', 'minSdkVersion = 24', t))
+          print('OK: native-lib, CMake e build.gradle configurados')
+
+      - name: Copiar backend e dependencias
+        run: |
           set -x
           NP=android/app/src/main/assets/nodejs-project
           M=android/app/src/main/AndroidManifest.xml
@@ -139,7 +141,22 @@ jobs:
           cp public/index.html $NP/public/
           (cd $NP && npm install --omit=dev --no-audit --no-fund --ignore-scripts) || { echo "ERRO: npm install do backend falhou"; exit 1; }
           ls $NP $NP/node_modules | head -30
-          [ -f "$M" ] || { echo "ERRO: manifest nao encontrado em $M"; find android -name AndroidManifest.xml; exit 1; }
+          [ -f "$M" ] || { echo "ERRO: manifest nao encontrado"; find android -name AndroidManifest.xml; exit 1; }
           grep -q usesCleartextTraffic $M || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $M
           grep -q extractNativeLibs $M || sed -i 's/<application/<application android:extractNativeLibs="true"/' $M
           grep -n "<application" $M
+
+      - name: Compilar APK Debug
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Conferir libnode no APK
+        run: unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "libnode|libnative-lib|nodejs-project/server.js|nodejs-project/bootstrap.js"
+
+      - name: Disponibilizar APK para Download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Disparador-WhatsApp-Local-Autonomo
+          path: android/app/build/outputs/apk/debug/app-debug.apk
