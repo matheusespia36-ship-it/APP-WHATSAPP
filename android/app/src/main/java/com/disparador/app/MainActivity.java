@@ -2,10 +2,19 @@ package com.disparador.app;
 
 import android.os.Bundle;
 import android.content.Context;
+import android.util.Log;
 import com.getcapacitor.BridgeActivity;
 import java.io.*;
 
 public class MainActivity extends BridgeActivity {
+
+    static {
+        System.loadLibrary("node");
+        System.loadLibrary("native-lib");
+    }
+
+    public native int startNodeWithArguments(String[] arguments);
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -19,30 +28,23 @@ public class MainActivity extends BridgeActivity {
                 File filesDir = context.getFilesDir();
                 File nodeDir = new File(filesDir, "nodejs-project");
 
-                copiarAssetPasta(context, "nodejs-project", nodeDir);
-
-                String nodeBinary = context.getApplicationInfo().nativeLibraryDir + "/libnode.so";
                 File serverFile = new File(nodeDir, "server.js");
-
-                if (new File(nodeBinary).exists()) {
-                    ProcessBuilder pb = new ProcessBuilder(nodeBinary, serverFile.getAbsolutePath());
-                    pb.directory(nodeDir);
-                    pb.environment().put("PORT", "3000");
-                    pb.environment().put("HOME", filesDir.getAbsolutePath());
-                    pb.environment().put("ANDROID_FILES_DIR", nodeDir.getAbsolutePath());
-                    pb.redirectErrorStream(true);
-
-                    Process process = pb.start();
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        android.util.Log.d("NODEJS-SERVER", line);
-                    }
-                } else {
-                    android.util.Log.e("NODEJS-SERVER", "Erro: libnode.so nao encontrada no diretorio nativo.");
+                if (!serverFile.exists()) {
+                    Log.d("NODEJS-SERVER", "Extraindo assets do Node.js para o armazenamento interno...");
+                    copiarAssetPasta(context, "nodejs-project", nodeDir);
                 }
+
+                Log.d("NODEJS-SERVER", "Iniciando thread nativa do Node.js via JNI...");
+                String[] nodeArgs = new String[]{
+                    "node",
+                    serverFile.getAbsolutePath()
+                };
+
+                int exitCode = startNodeWithArguments(nodeArgs);
+                Log.d("NODEJS-SERVER", "Processo Node.js finalizado com codigo: " + exitCode);
+
             } catch (Exception e) {
-                android.util.Log.e("NODEJS-SERVER", "Erro ao iniciar Node.js", e);
+                Log.e("NODEJS-SERVER", "Erro fatal ao iniciar Node.js via JNI", e);
             }
         }).start();
     }
@@ -59,7 +61,9 @@ public class MainActivity extends BridgeActivity {
             } else {
                 copiarAssetFicheiro(context, path, destDir);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e("NODEJS-SERVER", "Erro ao copiar pasta: " + path, e);
+        }
     }
 
     private void copiarAssetFicheiro(Context context, String assetPath, File destFile) {
@@ -77,6 +81,8 @@ public class MainActivity extends BridgeActivity {
             in.close();
             out.flush();
             out.close();
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e("NODEJS-SERVER", "Erro ao copiar ficheiro: " + assetPath, e);
+        }
     }
 }
