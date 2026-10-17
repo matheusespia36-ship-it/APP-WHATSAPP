@@ -172,7 +172,7 @@ async function connectWhatsApp() {
     auth: state,
     printQRInTerminal: false,
     browser: Browsers.ubuntu('Chrome'),
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: 'warn' }, logSink),
     connectTimeoutMs: 60000,
   });
   wa.sock = sock;
