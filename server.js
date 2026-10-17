@@ -353,6 +353,7 @@ async function route(req, res) {
       qr: qrData
     });
   }
+  if (method === 'GET' && p === '/wa-logs') return json(res, 200, { ok: true, logs: waLogs });
   if (method === 'GET' && p === '/groups') return json(res, 200, { ok: true, groups: await listGroups() });
   if (method === 'GET' && p === '/dispatches') return json(res, 200, { ok: true, dispatches });
   if (method === 'GET' && p === '/history') return json(res, 200, { ok: true, history });
