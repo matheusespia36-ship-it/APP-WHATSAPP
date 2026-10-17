@@ -129,13 +129,17 @@ jobs:
           EOF
           sed -i -E 's/minSdkVersion = [0-9]+/minSdkVersion = 24/' android/variables.gradle
 
-      - name: Copiar backend e dependencias
-        run: |
+            - name: Copiar backend e dependencias
+           run: |
+          set -x
           NP=android/app/src/main/assets/nodejs-project
+          M=android/app/src/main/AndroidManifest.xml
           mkdir -p $NP/public
           cp server.js bootstrap.js package.json $NP/
           cp public/index.html $NP/public/
-          (cd $NP && npm install --omit=dev --no-audit --no-fund --ignore-scripts)
-          M=android/app/src/main/AndroidManifest.xml
+          (cd $NP && npm install --omit=dev --no-audit --no-fund --ignore-scripts) || { echo "ERRO: npm install do backend falhou"; exit 1; }
+          ls $NP $NP/node_modules | head -30
+          [ -f "$M" ] || { echo "ERRO: manifest nao encontrado em $M"; find android -name AndroidManifest.xml; exit 1; }
           grep -q usesCleartextTraffic $M || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $M
-          grep -q ex
+          grep -q extractNativeLibs $M || sed -i 's/<application/<application android:extractNativeLibs="true"/' $M
+          grep -n "<application" $M
