@@ -1,0 +1,9 @@
+{
+  "appId": "com.disparador.app",
+  "appName": "Disparador-WhatsApp",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "allowNavigation": ["localhost:3000"]
+  }
+}
