@@ -8,6 +8,8 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const QRCode = require('qrcode');
+const waLogs = [];
+const logSink = { write: (m) => { waLogs.push(String(m).slice(0, 1500)); if (waLogs.length > 30) waLogs.shift(); } };
 
 const PORT = 3000;
 const DATA_DIR = fs.existsSync(path.join(__dirname, 'data'))
