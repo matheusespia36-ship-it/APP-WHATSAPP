@@ -63,7 +63,7 @@ jobs:
           cp -r /tmp/custom_java android/app/src/main/java
           if [ -d /tmp/custom_cpp ]; then cp -r /tmp/custom_cpp android/app/src/main/cpp; fi
           npx cap sync android
-
+      
       - name: Ligar libnode.so ao projeto (JNI + CMake)
         shell: python
         run: |
@@ -107,6 +107,8 @@ jobs:
 
           CMAKE = """cmake_minimum_required(VERSION 3.18.1)
           project("native-lib")
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
           include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/node)
           add_library(node SHARED IMPORTED)
           set_target_properties(node PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libnode.so)
@@ -117,10 +119,16 @@ jobs:
           if not os.path.exists(main + '/cpp/native-lib.cpp'):
               open(main + '/cpp/native-lib.cpp', 'w').write(NATIVE)
           open(main + '/cpp/CMakeLists.txt', 'w').write(CMAKE)
+
           p = 'android/app/build.gradle'
           s = open(p).read()
+          ndk_dir = '/usr/local/lib/android/sdk/ndk'
+          vers = os.listdir(ndk_dir) if os.path.isdir(ndk_dir) else []
+          new = sorted([v for v in vers if v.split('.')[0].isdigit() and int(v.split('.')[0]) >= 27], key=lambda v: [int(x) for x in v.split('.') if x.isdigit()])
+          ndk_line = ('\n    ndkVersion "%s"' % new[-1]) if new else ''
+          print('NDKs instalados:', vers, '-> usando:', new[-1] if new else 'padrao')
           if 'externalNativeBuild' not in s:
-              s = s.replace('android {', 'android {\n    externalNativeBuild {\n        cmake {\n            path "src/main/cpp/CMakeLists.txt"\n        }\n    }', 1)
+              s = s.replace('android {', 'android {' + ndk_line + '\n    externalNativeBuild {\n        cmake {\n            path "src/main/cpp/CMakeLists.txt"\n        }\n    }', 1)
               s = s.replace('defaultConfig {', 'defaultConfig {\n        ndk { abiFilters "arm64-v8a" }\n        externalNativeBuild { cmake { arguments "-DANDROID_STL=c++_shared" } }', 1)
               open(p, 'w').write(s)
 
@@ -128,7 +136,7 @@ jobs:
           t = open(v).read()
           open(v, 'w').write(re.sub(r'minSdkVersion = \d+', 'minSdkVersion = 24', t))
           print('OK: native-lib, CMake e build.gradle configurados')
-
+          
       - name: Copiar backend e dependencias
         run: |
           set -x
