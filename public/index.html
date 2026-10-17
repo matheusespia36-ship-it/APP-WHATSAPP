@@ -1675,6 +1675,7 @@ textarea { resize: vertical; min-height: 72px; }
   function handleFieldInput(ev) {
     var f = ev.target.dataset && ev.target.dataset.field;
     if (f) {
+            if (f === 'pairPhone') { state.pairPhone = ev.target.value; return; }
       if (f === 'groupFilter') {
         state.groupFilter = ev.target.value;
         renderGrupos();
