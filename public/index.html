@@ -1225,6 +1225,7 @@ textarea { resize: vertical; min-height: 72px; }
       s.hidden = s.id !== 's-' + name;
     });
     $('#nav').hidden = ['home', 'hist', 'conn'].indexOf(name) === -1;
+    lastSig = sig();
     RENDER[name]();
     renderNav();
   }
