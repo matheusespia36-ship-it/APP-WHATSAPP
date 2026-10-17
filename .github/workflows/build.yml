@@ -46,12 +46,20 @@ jobs:
           rm -rf android
           npx capacitor add android
           npx capacitor sync android
+
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           cp lib_node_temp/libnode.so android/app/src/main/jniLibs/arm64-v8a/
-          mkdir -p android/app/src/main/assets/nodejs-project/public
-          cp server.js package.json android/app/src/main/assets/nodejs-project/
-          cp -r node_modules android/app/src/main/assets/nodejs-project/
-          cp public/index.html android/app/src/main/assets/nodejs-project/public/
+
+          mkdir -p temp_node_pack
+          cp server.js package.json temp_node_pack/
+          cp -r node_modules temp_node_pack/
+          mkdir -p temp_node_pack/public
+          cp public/index.html temp_node_pack/public/
+          cd temp_node_pack && zip -r ../nodejs-project.zip . && cd ..
+
+          mkdir -p android/app/src/main/assets
+          cp nodejs-project.zip android/app/src/main/assets/
+
           sed -i 's/<application/<application android:usesCleartextTraffic="true" android:extractNativeLibs="true" /' android/app/src/main/AndroidManifest.xml
 
       - name: Compilar APK Debug
