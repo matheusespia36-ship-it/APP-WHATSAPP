@@ -210,7 +210,12 @@ async function connectWhatsApp() {
 
 async function sendToWhatsApp(jid, payload) {
   if (wa.status !== 'open' || !wa.sock) throw httpError(503, 'WhatsApp desligado.');
-  await wa.sock.sendMessage(jid, payload);
+  try {
+    await wa.sock.sendMessage(jid, payload);
+  } catch (e) {
+    const extra = waLogs.slice(-3).join(' | ').slice(0, 900);
+    throw httpError(500, e.message + (extra ? ' :: ' + extra : ''));
+  }
 }
 
 async function listGroups() {
