@@ -661,7 +661,7 @@ textarea { resize: vertical; min-height: 72px; }
   function addLog(msg, type) {
     state.logs.unshift({ time: timeNow(), msg: msg, type: type || 'normal' });
     if (state.logs.length > 50) state.logs.pop();
-    if (state.screen === 'conn') renderConn();
+    if (state.screen === 'conn') safeRender();
   }
 
   async function api(path, options) {
