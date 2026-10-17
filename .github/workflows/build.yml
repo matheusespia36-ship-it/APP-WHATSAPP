@@ -27,20 +27,14 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y tar zip wget
           mkdir -p lib_node_temp
-          
-          # Descarrega o binário oficial estático pré-compilado para arquiteturas de telemóveis Linux/Android ARM64
-          wget https://nodejs.org -O node_native.tar.xz
-          
-          # Descompacta o pacote tar.xz
+          wget https://nodejs.org/dist/v22.9.0/node-v22.9.0-linux-arm64.tar.xz -O node_native.tar.xz
           tar -xf node_native.tar.xz
-          
-          # Localiza o executável real dentro da estrutura extraída e copia como libnode.so
           NODE_BIN=$(find node-v22.9.0-linux-arm64 -type f -name "node" | head -n 1)
           if [ -n "$NODE_BIN" ]; then
             cp "$NODE_BIN" lib_node_temp/libnode.so
-            echo "[SUCESSO] Motor binário real do Node.js ARM64 mapeado com sucesso!"
+            echo "[SUCESSO] Motor binario real do Node.js ARM64 mapeado com sucesso!"
           else
-            echo "Erro fatal: Binário bin/node não encontrado no pacote oficial." && exit 1
+            echo "Erro fatal: Binario bin/node nao encontrado no pacote oficial." && exit 1
           fi
 
       - name: Preparar Projeto e Sincronizar Assets
@@ -48,22 +42,16 @@ jobs:
           npm install --no-audit --no-fund
           mkdir -p www
           cp public/index.html www/index.html
-
           npm install @capacitor/core@6.0.0 @capacitor/android@6.0.0 @capacitor/cli@6.0.0 --save
           rm -rf android
           npx capacitor add android
           npx capacitor sync android
-
-          # Injeta o motor nativo real de 60MB dentro das dependências nativas do APK
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           cp lib_node_temp/libnode.so android/app/src/main/jniLibs/arm64-v8a/
-
-          # Organiza os ficheiros completos do backend dentro do armazenamento de assets do aplicativo
           mkdir -p android/app/src/main/assets/nodejs-project/public
           cp server.js package.json android/app/src/main/assets/nodejs-project/
           cp -r node_modules android/app/src/main/assets/nodejs-project/
           cp public/index.html android/app/src/main/assets/nodejs-project/public/
-
           sed -i 's/<application/<application android:usesCleartextTraffic="true" android:extractNativeLibs="true" /' android/app/src/main/AndroidManifest.xml
 
       - name: Compilar APK Debug
