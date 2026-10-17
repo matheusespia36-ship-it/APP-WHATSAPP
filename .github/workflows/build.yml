@@ -37,6 +37,9 @@ jobs:
             echo "Erro fatal: Binario bin/node nao encontrado no pacote oficial." && exit 1
           fi
 
+      - name: Listar arquivos
+        run: ls -la
+
       - name: Preparar Projeto e Sincronizar Assets
         run: |
           npm install --no-audit --no-fund
