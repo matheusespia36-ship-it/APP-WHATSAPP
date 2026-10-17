@@ -930,7 +930,7 @@ textarea { resize: vertical; min-height: 72px; }
           '<div class="box">' +
             '<div class="lbl2">Ou Conectar por Código de Telefone</div>' +
             '<div class="row">' +
-              '<input type="text" id="phoneInput" placeholder="Ex: 5511999998888" value="' + esc(state.pairPhone) + '">' +
+                '<input type="text" id="phoneInput" data-field="pairPhone" placeholder="Ex: 5511999998888" value="' + esc(state.pairPhone) + '">' +
               '<button class="btn outline small" data-act="requestPairCode">' + ic('phone', 14) + ' Gerar Código</button>' +
             '</div>' +
             (state.pairCode ? '<div class="kv" style="margin-top:6px;"><span class="lbl2">Código de Pareamento:</span><span class="mono" style="font-size:18px; letter-spacing:2px;">' + esc(state.pairCode) + '</span></div>' : '') +
