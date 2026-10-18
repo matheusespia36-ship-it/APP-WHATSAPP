@@ -542,8 +542,7 @@ textarea { resize: vertical; min-height: 72px; }
   };
   var norm = function (s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); };
   var slug = function (s) { return norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
-
-  var BACKEND_URL = window.BACKEND_URL !== undefined ? window.BACKEND_URL : '';
+  var BACKEND_URL = (window.BACKEND_URL && window.BACKEND_URL !== '') ? window.BACKEND_URL : 'http://127.0.0.1:3000';
   var TOKEN = window.SERVER_TOKEN || localStorage.getItem('disparador_token') || 'minhasenha';
 
   var state = {
