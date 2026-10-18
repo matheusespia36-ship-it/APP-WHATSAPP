@@ -13,13 +13,6 @@ lib_node_temp/
 backend_pack/
 backend.zip
 
-# Logs do Servidor e Dados de Sessão do WhatsApp (Gerados localmente no Android)
-*.log
-data/auth/
-data/config.json
-data/dispatches.json
-data/history.json
-
 # Pastas locais geradas por IDEs e Sistemas Operacionais
 .DS_Store
 .idea/
