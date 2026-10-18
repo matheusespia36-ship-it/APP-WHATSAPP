@@ -1,4 +1,4 @@
-name: Compilar APK Autonomo Local (Node.js Embutido)
+name: Compilar APK Disparador WhatsApp
 
 on:
   push:
@@ -7,15 +7,11 @@ on:
 
 jobs:
   build:
+    name: Build APK Android
     runs-on: ubuntu-latest
     steps:
-      - name: Baixar Codigo
+      - name: Baixar Codigo do Repositorio
         uses: actions/checkout@v4
-
-      - name: Configurar Node.js 22 (Ambiente de Build)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
       - name: Configurar Java JDK 21
         uses: actions/setup-java@v4
@@ -23,146 +19,75 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
-      - name: Conferir arquivos do backend
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Preparar e Sincronizar Arquivos do Backend (Assets)
         run: |
-          ls -la
-          for f in server.js bootstrap.js package.json public/index.html capacitor.config.json; do
-            [ -f "$f" ] || { echo "Erro fatal: falta $f na raiz do repositorio."; exit 1; }
+          echo "=== Sincronizando arquivos do backend para os assets do app ==="
+          mkdir -p app/src/main/assets/nodejs-project/public
+
+          # Sincroniza arquivos de backend da raiz ou subdiretorios para os assets
+          for f in server.js bootstrap.js package.json capacitor.config.json; do
+            if [ -f "$f" ]; then
+              cp "$f" app/src/main/assets/nodejs-project/
+              echo "Copiado $f da raiz para assets"
+            else
+              FOUND=$(find . -maxdepth 4 -name "$f" 2>/dev/null | grep -v "assets/nodejs-project" | head -n 1)
+              if [ -n "$FOUND" ] && [ -f "$FOUND" ]; then
+                cp "$FOUND" app/src/main/assets/nodejs-project/
+                echo "Copiado $FOUND para assets"
+              fi
+            fi
           done
-          grep -q startNodeWithArguments android/app/src/main/java/com/disparador/app/MainActivity.java \
-            || { echo "Erro fatal: MainActivity.java customizado nao encontrado"; exit 1; }
 
-      - name: Baixar libnode.so e headers (nodejs-mobile) para ARM64
-        env:
-          GH_TOKEN: ${{ github.token }}
+          # Sincroniza index.html para public
+          if [ -f "public/index.html" ]; then
+            cp public/index.html app/src/main/assets/nodejs-project/public/index.html
+          elif [ -f "www/index.html" ]; then
+            cp www/index.html app/src/main/assets/nodejs-project/public/index.html
+          else
+            FOUND_HTML=$(find . -maxdepth 4 -name "index.html" 2>/dev/null | grep -v "assets/nodejs-project" | head -n 1)
+            if [ -n "$FOUND_HTML" ] && [ -f "$FOUND_HTML" ]; then
+              cp "$FOUND_HTML" app/src/main/assets/nodejs-project/public/index.html
+            fi
+          fi
+
+          # Instalar dependencias de producao se package.json estiver presente
+          if [ -f "app/src/main/assets/nodejs-project/package.json" ]; then
+            echo "Instalando dependencias de producao do backend..."
+            (cd app/src/main/assets/nodejs-project && npm install --omit=dev --no-audit --no-fund --ignore-scripts || true)
+          fi
+
+          echo "Conteudo da pasta assets:"
+          ls -la app/src/main/assets/nodejs-project/
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Garantir Permissao do Gradlew
         run: |
-          gh release download --repo digidem/nodejs-mobile --pattern 'nodejs-mobile-android-[0-9]*.zip' --output nm.zip
-          unzip -q nm.zip -d nm
-          find nm -maxdepth 4 | head -40
-          mkdir -p lib_node_temp lib_node_headers
-          LIB=$(find nm -path "*arm64-v8a*" -name libnode.so | head -n 1)
-          HDR=$(find nm -name node.h | head -n 1)
-          [ -n "$LIB" ] || { echo "Erro fatal: libnode.so arm64-v8a nao encontrado no zip."; exit 1; }
-          [ -n "$HDR" ] || { echo "Erro fatal: node.h nao encontrado no zip."; exit 1; }
-          cp "$LIB" lib_node_temp/libnode.so
-          cp -r "$(dirname "$HDR")"/. lib_node_headers/
-          ls -lh lib_node_temp/libnode.so
-
-      - name: Preparar Projeto Android
-        run: |
-          npm install --no-audit --no-fund
-          npm install @capacitor/core@6.0.0 @capacitor/android@6.0.0 @capacitor/cli@6.0.0 --no-save --no-audit --no-fund
-          mkdir -p www
-          cp public/index.html www/index.html
-          rm -rf /tmp/custom_java /tmp/custom_cpp
-          cp -r android/app/src/main/java /tmp/custom_java
-          if [ -d android/app/src/main/cpp ]; then cp -r android/app/src/main/cpp /tmp/custom_cpp; fi
-          rm -rf android
-          npx cap add android
-          rm -rf android/app/src/main/java
-          cp -r /tmp/custom_java android/app/src/main/java
-          if [ -d /tmp/custom_cpp ]; then cp -r /tmp/custom_cpp android/app/src/main/cpp; fi
-          npx cap sync android
-      
-      - name: Ligar libnode.so ao projeto (JNI + CMake)
-        shell: python
-        run: |
-          import os, re, shutil
-
-          main = 'android/app/src/main'
-          os.makedirs(main + '/jniLibs/arm64-v8a', exist_ok=True)
-          os.makedirs(main + '/cpp/include/node', exist_ok=True)
-          shutil.copy('lib_node_temp/libnode.so', main + '/jniLibs/arm64-v8a/libnode.so')
-          shutil.copytree('lib_node_headers', main + '/cpp/include/node', dirs_exist_ok=True)
-
-          NATIVE = """#include <jni.h>
-          #include <string.h>
-          #include <stdlib.h>
-          #include "node.h"
-
-          extern "C" JNIEXPORT jint JNICALL
-          Java_com_disparador_app_MainActivity_startNodeWithArguments(JNIEnv* env, jobject, jobjectArray arguments) {
-            jsize argc = env->GetArrayLength(arguments);
-            size_t total = 0;
-            for (int i = 0; i < argc; i++) {
-              jstring s = (jstring)env->GetObjectArrayElement(arguments, i);
-              const char* c = env->GetStringUTFChars(s, 0);
-              total += strlen(c) + 1;
-              env->ReleaseStringUTFChars(s, c);
-            }
-            char* buf = (char*)calloc(total, sizeof(char));
-            char** argv = (char**)calloc(argc, sizeof(char*));
-            char* cur = buf;
-            for (int i = 0; i < argc; i++) {
-              jstring s = (jstring)env->GetObjectArrayElement(arguments, i);
-              const char* c = env->GetStringUTFChars(s, 0);
-              strncpy(cur, c, strlen(c));
-              argv[i] = cur;
-              cur += strlen(c) + 1;
-              env->ReleaseStringUTFChars(s, c);
-            }
-            return jint(node::Start(argc, argv));
-          }
-          """
-
-          CMAKE = """cmake_minimum_required(VERSION 3.18.1)
-          project("native-lib")
-          set(CMAKE_CXX_STANDARD 20)
-          set(CMAKE_CXX_STANDARD_REQUIRED ON)
-          include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/node)
-          add_library(node SHARED IMPORTED)
-          set_target_properties(node PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libnode.so)
-          add_library(native-lib SHARED native-lib.cpp)
-          target_link_libraries(native-lib node log)
-          """
-
-          if not os.path.exists(main + '/cpp/native-lib.cpp'):
-              open(main + '/cpp/native-lib.cpp', 'w').write(NATIVE)
-          open(main + '/cpp/CMakeLists.txt', 'w').write(CMAKE)
-
-          p = 'android/app/build.gradle'
-          s = open(p).read()
-          ndk_dir = '/usr/local/lib/android/sdk/ndk'
-          vers = os.listdir(ndk_dir) if os.path.isdir(ndk_dir) else []
-          new = sorted([v for v in vers if v.split('.')[0].isdigit() and int(v.split('.')[0]) >= 27], key=lambda v: [int(x) for x in v.split('.') if x.isdigit()])
-          ndk_line = ('\n    ndkVersion "%s"' % new[-1]) if new else ''
-          print('NDKs instalados:', vers, '-> usando:', new[-1] if new else 'padrao')
-          if 'externalNativeBuild' not in s:
-              s = s.replace('android {', 'android {' + ndk_line + '\n    externalNativeBuild {\n        cmake {\n            path "src/main/cpp/CMakeLists.txt"\n        }\n    }', 1)
-              s = s.replace('defaultConfig {', 'defaultConfig {\n        ndk { abiFilters "arm64-v8a" }\n        externalNativeBuild { cmake { arguments "-DANDROID_STL=c++_shared" } }', 1)
-              open(p, 'w').write(s)
-
-          v = 'android/variables.gradle'
-          t = open(v).read()
-          open(v, 'w').write(re.sub(r'minSdkVersion = \d+', 'minSdkVersion = 24', t))
-          print('OK: native-lib, CMake e build.gradle configurados')
-          
-      - name: Copiar backend e dependencias
-        run: |
-          set -x
-          NP=android/app/src/main/assets/nodejs-project
-          M=android/app/src/main/AndroidManifest.xml
-          mkdir -p $NP/public
-          cp server.js bootstrap.js package.json $NP/
-          cp public/index.html $NP/public/
-          (cd $NP && npm install --omit=dev --no-audit --no-fund --ignore-scripts) || { echo "ERRO: npm install do backend falhou"; exit 1; }
-          ls $NP $NP/node_modules | head -30
-          [ -f "$M" ] || { echo "ERRO: manifest nao encontrado"; find android -name AndroidManifest.xml; exit 1; }
-          grep -q usesCleartextTraffic $M || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' $M
-          grep -q extractNativeLibs $M || sed -i 's/<application/<application android:extractNativeLibs="true"/' $M
-          grep -n "<application" $M
-
-      - name: Compilar APK Debug
-        run: |
-          cd android
+          if [ ! -f "gradlew" ]; then
+            echo "Gerando gradle wrapper..."
+            gradle wrapper || true
+          fi
           chmod +x gradlew
-          ./gradlew assembleDebug
 
-      - name: Conferir libnode no APK
-        run: unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "libnode|libnative-lib|nodejs-project/server.js|nodejs-project/bootstrap.js"
+      - name: Compilar APK (assembleDebug)
+        run: |
+          ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Verificar APK Gerado
+        run: |
+          echo "=== Verificando APK gerado ==="
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "AndroidManifest|classes.dex|assets/nodejs-project" | head -30
 
       - name: Disponibilizar APK para Download
         uses: actions/upload-artifact@v4
         with:
-          name: Disparador-WhatsApp-Local-Autonomo
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Disparador-WhatsApp-Debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

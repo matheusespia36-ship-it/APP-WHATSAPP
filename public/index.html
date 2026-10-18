@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Disparador WhatsApp</title>
+<meta name="description" content="Disparador e agendador automático de relatórios e mensagens para múltiplos grupos de WhatsApp com integração Baileys e prioridade em segundo plano.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --bg-outer: #060B08;
+  --bg: #0C1511;
+  --surface: #14221C;
+  --surface-hover: #1A2B23;
+  --line: #22372D;
+  --line-strong: #334E41;
+  --fg: #EAF4EE;
+  --muted: #8EA79B;
+  --accent: #2EE08A;
+  --accent-ink: #051A10;
+  --accent-text: #2EE08A;
+  --accent-soft: rgba(46, 224, 138, 0.12);
+  --accent-border: #1F4D39;
+  --off-track: #263830;
+  --off-knob: #8EA79B;
+  --danger: #FF7070;
+  --danger-soft: rgba(255, 112, 112, 0.12);
+  --warning: #F5B041;
+  --warning-soft: rgba(245, 176, 65, 0.12);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+  background: var(--bg-outer);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+h2 { font-size: 16px; font-weight: 700; }
+.sm { font-size: 12px; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--font-mono); font-size: 13px; }
+
+#app {
+  width: 100%;
+  max-width: 480px;
+  height: 100vh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+@media (min-width: 520px) {
+  body { padding: 12px; }
+  #app {
+    height: calc(100vh - 24px);
+    max-height: 920px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+  }
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.screen[hidden] { display: none !important; }
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  z-index: 2;
+}
+.bar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.bar-title h1 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.foot {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.iconbtn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--fg);
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.iconbtn:hover { background: var(--surface); border-color: var(--line); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pill.open { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+.pill.needsPairing { background: var(--warning-soft); color: var(--warning); border: 1px solid rgba(245, 176, 65, 0.3); }
+.pill.connecting, .pill.reconnecting { background: rgba(142, 167, 155, 0.15); color: var(--muted); border: 1px solid var(--line); }
+.pill.offline, .pill.loggedOut { background: var(--danger-soft); color: var(--danger); border: 1px solid rgba(255, 112, 112, 0.3); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+.cards { display: flex; flex-direction: column; gap: 12px; }
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: border-color 0.15s;
+}
+.card:hover { border-color: var(--line-strong); }
+.card.off { opacity: 0.65; }
+.card.off .card-title { color: var(--muted); }
+.card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.card-title {
+  background: none;
+  border: 0;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  padding: 0;
+  flex: 1;
+}
+.card-title:hover { color: var(--accent); }
+
+.sw {
+  flex: none;
+  width: 48px;
+  height: 30px;
+  padding: 0;
+  background: none;
+  border: 0;
+  display: flex;
+  align-items: center;
+}
+.track {
+  width: 48px;
+  height: 28px;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--off-track);
+  display: flex;
+  align-items: center;
+  transition: background 0.2s;
+}
+.knob {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--off-knob);
+  transition: transform 0.2s, background 0.2s;
+}
+.sw[aria-pressed="true"] .track { background: var(--accent); }
+.sw[aria-pressed="true"] .knob { transform: translateX(20px); background: var(--accent-ink); }
+
+.meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.meta svg { flex: none; }
+.okt { color: var(--accent); font-weight: 600; }
+.empty {
+  padding: 32px 20px;
+  border-radius: 18px;
+  border: 1px dashed var(--line-strong);
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-weight: 700;
+  font-size: 14px;
+  transition: filter 0.15s, transform 0.05s, background 0.15s;
+}
+.btn:active { transform: scale(0.98); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn.outline { background: transparent; border-color: var(--accent); color: var(--accent); }
+.btn.outline:hover { background: var(--accent-soft); }
+.btn.ghost { background: var(--surface); border-color: var(--line); color: var(--fg); }
+.btn.ghost:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+.btn.small { min-height: 38px; padding: 0 14px; border-radius: 10px; font-size: 13px; }
+.btn.block { width: 100%; }
+.btn.danger { background: var(--danger-soft); border-color: rgba(255, 112, 112, 0.3); color: var(--danger); }
+.btn.danger:hover { background: rgba(255, 112, 112, 0.2); }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field > label, .lbl2 { font-size: 13px; font-weight: 700; color: var(--muted); }
+input[type=text], input[type=time], input[type=search], textarea, select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 14px;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+textarea { resize: vertical; min-height: 72px; }
+
+.row { display: flex; align-items: center; gap: 8px; }
+.row input { flex: 1; min-width: 0; }
+
+.seg {
+  display: flex;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  gap: 4px;
+}
+.seg button {
+  flex: 1;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+.seg button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 800;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 6px 0 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+}
+.chip button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: inherit;
+  border-radius: 50%;
+  padding: 0;
+}
+
+.gitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+.gitem:hover { background: var(--surface-hover); border-color: var(--line-strong); }
+.gitem.selected { border-color: var(--accent); background: var(--surface-hover); }
+.gitem .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gitem .t b { font-size: 14px; }
+.gitem .t small { font-size: 12px; color: var(--muted); }
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.hitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.hic {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.hic.bad { background: var(--danger-soft); color: var(--danger); }
+.hitem .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.hitem .t b { font-size: 14px; color: var(--fg); }
+.hitem .t span { font-size: 12px; color: var(--muted); }
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.stat .ic {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat div { display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-size: 15px; }
+.stat span { font-size: 12px; color: var(--muted); }
+
+.box {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qr-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.qr-box img {
+  width: 200px;
+  height: 200px;
+  border-radius: 12px;
+  background: white;
+  padding: 8px;
+}
+
+.log-box {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.log-entry { display: flex; gap: 6px; }
+.log-time { color: var(--muted); flex: none; }
+.log-err { color: var(--danger); font-weight: 600; }
+.log-ok { color: var(--accent); }
+
+#nav {
+  flex: none;
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+  padding: 6px 12px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+  transition: color 0.15s;
+}
+.tab[aria-current="page"] { color: var(--accent); font-weight: 700; }
+
+#toast {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 74px;
+  z-index: 100;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: var(--fg);
+  color: var(--bg-outer);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="stage">
+    <section class="screen" id="s-home" hidden></section>
+    <section class="screen" id="s-hist" hidden></section>
+    <section class="screen" id="s-conn" hidden></section>
+    <section class="screen" id="s-novo" hidden></section>
+    <section class="screen" id="s-grupos" hidden></section>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+  <nav id="nav" aria-label="Navegação principal">
+    <button class="tab" data-act="tab" data-tab="home" aria-current="page"></button>
+    <button class="tab" data-act="tab" data-tab="hist"></button>
+    <button class="tab" data-act="tab" data-tab="conn"></button>
+  </nav>
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var esc = function (s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+  var norm = function (s) { return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); };
+  var slug = function (s) { return norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
+
+  var BACKEND_URL = window.BACKEND_URL !== undefined ? window.BACKEND_URL : '';
+  var TOKEN = window.SERVER_TOKEN || localStorage.getItem('disparador_token') || 'minhasenha';
+
+  var state = {
+    screen: 'home',
+    waStatus: 'verificando',
+    qrImage: null,
+    groups: [],
+    dispatches: [],
+    history: [],
+    logs: [],
+    draft: null,
+    editingSlug: null,
+    groupFilter: '',
+    selectedGroupIds: {},
+    pairPhone: '',
+    pairCode: '',
+    tokenShown: false,
+    backgroundPriority: true
+  };
+
+  var I = {
+    send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>',
+    list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    wifi: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    back: '<polyline points="15 18 9 12 15 6"/>',
+    chev: '<polyline points="9 18 15 12 9 6"/>',
+    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    check: '<polyline points="20 6 9 17 4 12"/>',
+    refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+    battery: '<rect x="1" y="6" width="18" height="12" rx="2"/><line x1="23" y1="11" x2="23" y2="13"/>'
+  };
+
+  var ic = function (n, s, sw) {
+    return '<svg width="' + (s || 18) + '" height="' + (s || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (sw || 2) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (I[n] || '') + '</svg>';
+  };
+
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.classList.remove('show'); }, 2800);
+  }
+
+  function getDispatchGroups(d) {
+    if (d.targetGroups && d.targetGroups.length) return d.targetGroups;
+    if (d.groups && d.groups.length) return d.groups;
+    if (d.groupJid) return [{ id: d.groupJid, name: d.groupName || d.groupJid }];
+    return [];
+  }
+
+  function getDisplayGroupName(d) {
+    var gs = getDispatchGroups(d);
+    if (!gs.length) return 'Nenhum grupo definido';
+    if (gs.length === 1) return gs[0].name;
+    if (gs.length === 2) return gs[0].name + ' e ' + gs[1].name;
+    return gs[0].name + ' +' + (gs.length - 1) + ' grupos (' + gs.length + ' no total)';
+  }
+
+  async function api(path, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    options.headers['x-token'] = TOKEN;
+    if (options.body && typeof options.body === 'string') {
+      options.headers['Content-Type'] = 'application/json';
+    }
+    try {
+      var res = await fetch(BACKEND_URL + path, options);
+      if (!res.ok) {
+        var errBody = {};
+        try { errBody = await res.json(); } catch(e) {}
+        throw new Error(errBody.error || ('HTTP ' + res.status));
+      }
+      return await res.json();
+    } catch (e) {
+      throw e;
+    }
+  }
+
+  async function pollBackend() {
+    try {
+      var data = await api('/status');
+      state.waStatus = data.whatsapp || 'verificando';
+      if (data.qr) state.qrImage = data.qr;
+      var d = await api('/dispatches');
+      if (d.dispatches) state.dispatches = d.dispatches;
+      var g = await api('/groups');
+      if (g.groups) state.groups = g.groups;
+      var h = await api('/history');
+      if (h.history) state.history = h.history;
+      var l = await api('/wa-logs');
+      if (l.logs) state.logs = l.logs;
+    } catch (e) {
+      state.waStatus = 'offline';
+    }
+    if (['home', 'hist', 'conn'].indexOf(state.screen) !== -1) {
+      RENDER[state.screen]();
+    }
+  }
+
+  setInterval(pollBackend, 4000);
+  pollBackend();
+
+  function getStatusBadge() {
+    var s = state.waStatus;
+    if (s === 'open') return '<span class="pill open"><span class="dot"></span>Conectado</span>';
+    if (s === 'needsPairing') return '<span class="pill needsPairing"><span class="dot"></span>Aguardando QR</span>';
+    if (s === 'connecting') return '<span class="pill connecting"><span class="dot"></span>Conectando...</span>';
+    return '<span class="pill offline"><span class="dot"></span>Offline</span>';
+  }
+
+  function renderHome() {
+    var act = state.dispatches.filter(function (d) { return d.active; }).length;
+    $('#s-home').innerHTML =
+      '<div class="bar">' +
+        '<div class="bar-title"><h1>Disparador WhatsApp</h1></div>' +
+        getStatusBadge() +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="stat">' +
+          '<div class="ic">' + ic('send', 22, 2.5) + '</div>' +
+          '<div>' +
+            '<b>' + act + ' disparos automáticos ativos</b>' +
+            '<span>' + state.dispatches.length + ' configurados · Múltiplos grupos suportados</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+          '<h2>Meus Disparos</h2>' +
+          '<button class="btn ghost small" data-act="refresh">' + ic('refresh', 14) + ' Atualizar</button>' +
+        '</div>' +
+        '<div class="cards">' +
+          (state.dispatches.length ? state.dispatches.map(function(d) {
+            var groupText = getDisplayGroupName(d);
+            var isMulti = getDispatchGroups(d).length > 1;
+            return '<article class="card' + (d.active ? '' : ' off') + '">' +
+              '<div class="card-top">' +
+                '<button class="card-title" data-act="edit" data-slug="' + esc(d.slug) + '">' + esc(d.name) + '</button>' +
+                '<button class="sw" data-act="toggle" data-slug="' + esc(d.slug) + '" aria-pressed="' + (d.active ? 'true' : 'false') + '"><span class="track"><span class="knob"></span></span></button>' +
+              '</div>' +
+              '<div class="meta" style="' + (isMulti ? 'color:var(--accent); font-weight:700;' : '') + '">' + ic('users', 15) + '<span>' + esc(groupText) + '</span></div>' +
+              '<div class="meta">' + ic('clock', 15) + '<span>' + esc(d.schedType === 'interval' ? 'A cada ' + d.schedValue + ' min' : 'Diariamente às ' + d.schedValue) + '</span></div>' +
+              (d.lastMessage ? '<div class="meta okt sm">' + ic('file', 14) + '<span>Arquivo: ' + esc(d.lastMessage.fileName) + '</span></div>' : '') +
+              (d.preventDuplicates !== false ? '<div class="meta sm" style="color:var(--accent);">' + ic('shield', 13) + '<span>Anti-duplicado ativo</span></div>' : '') +
+              '<div class="row" style="margin-top:6px; padding-top:8px; border-top:1px solid var(--line);">' +
+                '<button class="btn outline small" data-act="edit" data-slug="' + esc(d.slug) + '" style="flex:1;">' + ic('edit', 14) + ' Editar</button>' +
+                '<button class="btn ghost small" data-act="testCard" data-slug="' + esc(d.slug) + '">' + ic('send', 14) + ' Testar</button>' +
+              '</div>' +
+            '</article>';
+          }).join('') : '<div class="empty">Nenhum disparo configurado ainda.</div>') +
+        '</div>' +
+      '</div>' +
+      '<div class="foot">' +
+        '<button class="btn primary block" data-act="new">' + ic('plus', 18, 2.5) + 'Novo disparo</button>' +
+      '</div>';
+  }
+
+  function renderHist() {
+    $('#s-hist').innerHTML =
+      '<div class="bar">' +
+        '<div class="bar-title"><h1>Histórico de Envios</h1></div>' +
+        '<button class="btn ghost small" data-act="clearHist">' + ic('trash', 14) + ' Limpar</button>' +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="cards">' +
+          (state.history.length ? state.history.map(function(h) {
+            var whenStr = h.when ? new Date(h.when).toLocaleString('pt-BR') : 'Data não informada';
+            var isDedup = h.isDeduplicated || (h.note && h.note.includes('Duplicidade evitada'));
+            return '<div class="hitem">' +
+              '<span class="hic' + (h.ok ? '' : ' bad') + '">' + ic(isDedup ? 'shield' : (h.ok ? 'check' : 'x'), 16) + '</span>' +
+              '<div class="t">' +
+                '<b>' + esc(h.name || h.slug) + '</b>' +
+                '<span>' + esc(h.group || 'Direto') + ' · ' + esc(whenStr) + (h.auto ? ' (Automático)' : '') + '</span>' +
+                (h.fileName ? '<span class="sm muted">' + ic('file', 12) + ' Arquivo: ' + esc(h.fileName) + '</span>' : '') +
+                '<span class="' + (isDedup ? 'okt' : (h.ok ? 'okt' : 'muted')) + '">' + esc(h.note || (h.ok ? 'Entregue com sucesso' : (h.error || 'Falha'))) + '</span>' +
+              '</div>' +
+            '</div>';
+          }).join('') : '<div class="empty">Nenhum histórico registrado ainda.</div>') +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderConn() {
+    $('#s-conn').innerHTML =
+      '<div class="bar">' +
+        '<div class="bar-title"><h1>Conexão WhatsApp</h1></div>' +
+        getStatusBadge() +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="stat">' +
+          '<div class="ic">' + ic('wifi', 22, 2.5) + '</div>' +
+          '<div><b>' + (state.waStatus === 'open' ? 'Conectado e Operacional' : 'Aguardando Conexão') + '</b><span>Motor Baileys com suporte a QR e Código</span></div>' +
+        '</div>' +
+
+        '<div class="box" style="border-color:var(--accent-border);">' +
+          '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+            '<div style="display:flex; align-items:center; gap:8px;">' +
+              '<span style="color:var(--accent);">' + ic('shield', 18) + '</span>' +
+              '<b style="font-size:14px;">Prioridade Total em Segundo Plano</b>' +
+            '</div>' +
+            '<button class="sw" data-act="togglePriority" aria-pressed="' + (state.backgroundPriority ? 'true' : 'false') + '"><span class="track"><span class="knob"></span></span></button>' +
+          '</div>' +
+          '<span class="sm muted">Mantém o motor WhatsApp, o agendador e o WakeLock ativos 24/7 sem interrupções do Android.</span>' +
+          '<button class="btn ghost small" data-act="requestBattery">' + ic('battery', 14) + ' Solicitar Isenção de Otimização de Bateria</button>' +
+        '</div>' +
+
+        (state.waStatus !== 'open' ?
+          '<div class="box">' +
+            '<div class="lbl2">Pareamento via QR Code</div>' +
+            '<div class="qr-box">' +
+              (state.qrImage ? '<img src="' + state.qrImage + '" alt="QR Code WhatsApp">' : '<div class="muted">Gerando QR Code...</div>') +
+              '<span class="sm muted">Abra o WhatsApp &gt; Dispositivos Conectados &gt; Conectar aparelho</span>' +
+              '<div class="row" style="margin-top:6px;">' +
+                '<button class="btn ghost small" data-act="refreshQR">' + ic('refresh', 14) + ' Recarregar</button>' +
+                '<button class="btn danger small" data-act="resetSession">Resetar Sessão</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="box">' +
+            '<div class="lbl2">Ou Conectar por Código de Telefone</div>' +
+            '<div class="row">' +
+              '<input type="text" id="phoneInput" placeholder="Ex: 5511999998888" value="' + esc(state.pairPhone) + '">' +
+              '<button class="btn outline small" data-act="reqCode">' + ic('phone', 14) + ' Gerar Código</button>' +
+            '</div>' +
+            (state.pairCode ? '<div class="kv" style="margin-top:6px;"><span class="lbl2">Código:</span><span class="mono" style="font-size:18px; letter-spacing:2px; color:var(--accent);">' + esc(state.pairCode) + '</span></div>' : '') +
+          '</div>'
+        :
+          '<div class="box">' +
+            '<div class="lbl2">Sessão Ativa</div>' +
+            '<p class="sm muted">O WhatsApp está autenticado e pronto para despachar mensagens e relatórios para múltiplos grupos.</p>' +
+            '<button class="btn danger small" data-act="resetSession">' + ic('x', 14) + ' Desconectar e Ler Novo QR Code</button>' +
+          '</div>'
+        ) +
+
+        '<div class="box">' +
+          '<div class="lbl2">Logs Recentes do Sistema</div>' +
+          '<div class="log-box">' +
+            (state.logs && state.logs.length ? state.logs.map(function(l) {
+              return '<div class="log-entry"><span class="log-ok">' + esc(l) + '</span></div>';
+            }).join('') : '<div class="muted">Aguardando atividades...</div>') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderNovo() {
+    var d = state.draft;
+    var edit = state.editingSlug !== null;
+    var groups = getDispatchGroups(d);
+
+    $('#s-novo').innerHTML =
+      '<div class="bar">' +
+        '<button class="iconbtn" data-act="back">' + ic('back', 20) + '</button>' +
+        '<div class="bar-title"><h1>' + (edit ? 'Editar Disparo' : 'Novo Disparo') + '</h1></div>' +
+        (edit ? '<button class="iconbtn" data-act="delDispatch" style="color:var(--danger)">' + ic('trash', 20) + '</button>' : '<div></div>') +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="field">' +
+          '<label>Nome do Disparo</label>' +
+          '<input type="text" id="dispName" value="' + esc(d.name || '') + '" placeholder="Ex: Relatório Manutenção">' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+            '<label>Grupos de Destino (' + groups.length + ' selecionado' + (groups.length !== 1 ? 's' : '') + ')</label>' +
+            '<button class="btn outline small" data-act="pickGroups" style="height:32px; font-size:12px;">' + ic('plus', 13) + ' Adicionar / Alterar Grupos</button>' +
+          '</div>' +
+          '<div class="cards" style="gap:6px; margin-top:4px;">' +
+            (groups.length ? groups.map(function(g) {
+              return '<div class="card" style="padding:10px 12px; flex-direction:row; align-items:center; justify-content:space-between;">' +
+                '<div style="display:flex; align-items:center; gap:10px; min-width:0;">' +
+                  '<div class="avatar" style="width:30px; height:30px; font-size:12px;">' + esc((g.name || 'G')[0].toUpperCase()) + '</div>' +
+                  '<div style="min-width:0;"><b style="font-size:13px; display:block; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">' + esc(g.name) + '</b><small class="muted mono">' + esc(g.id) + '</small></div>' +
+                '</div>' +
+                '<button class="iconbtn" data-act="removeGroupFromDraft" data-id="' + esc(g.id) + '" style="width:30px; height:30px; color:var(--danger);">' + ic('x', 14) + '</button>' +
+              '</div>';
+            }).join('') : '<div class="empty" style="padding:16px;">Nenhum grupo selecionado ainda. Clique acima para escolher múltiplos grupos!</div>') +
+          '</div>' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label>Horários Fixos ou Intervalo</label>' +
+          '<input type="text" id="dispSched" value="' + esc(d.schedValue || '08:00, 18:00') + '" placeholder="Ex: 08:00, 18:00 ou 120">' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label>Legenda da Mensagem (com tags {data} e {hora})</label>' +
+          '<textarea id="dispCaption" placeholder="Relatório · {data} às {hora}">' + esc(d.caption || '') + '</textarea>' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label>Status deste disparo</label>' +
+          '<div class="seg">' +
+            '<button data-act="setDraftActive" data-v="true" aria-pressed="' + (d.active ? 'true' : 'false') + '">✓ Ativo</button>' +
+            '<button data-act="setDraftActive" data-v="false" aria-pressed="' + (!d.active ? 'true' : 'false') + '">✕ Pausado</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="foot">' +
+        '<button class="btn primary block" data-act="saveDraft">' + ic('check', 16, 2.5) + (edit ? ' Salvar Alterações' : ' Criar Disparo') + '</button>' +
+      '</div>';
+  }
+
+  function renderGrupos() {
+    var q = norm(state.groupFilter || '');
+    var filtered = state.groups.filter(function (g) {
+      return !q || norm(g.name).includes(q) || (g.id && norm(g.id).includes(q));
+    });
+
+    var selectedCount = Object.keys(state.selectedGroupIds).filter(function(k) { return state.selectedGroupIds[k]; }).length;
+
+    $('#s-grupos').innerHTML =
+      '<div class="bar">' +
+        '<button class="iconbtn" data-act="backToNovo">' + ic('back', 20) + '</button>' +
+        '<div class="bar-title"><h1>Escolher Grupos (' + selectedCount + ')</h1></div>' +
+        '<button class="btn ghost small" data-act="confirmGroups">' + ic('check', 14) + ' Concluir</button>' +
+      '</div>' +
+      '<div class="body">' +
+        '<input type="search" placeholder="Buscar grupo por nome..." value="' + esc(state.groupFilter) + '" id="groupSearchInput">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+          '<span class="sm muted">' + selectedCount + ' de ' + state.groups.length + ' selecionado(s)</span>' +
+          '<div class="row">' +
+            '<button class="btn ghost small" data-act="selectAllGroups">Selecionar Todos</button>' +
+            '<button class="btn ghost small" data-act="clearAllGroups">Limpar</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="box">' +
+          '<span class="lbl2">Adicionar JID manual:</span>' +
+          '<div class="row">' +
+            '<input type="text" id="manualJid" placeholder="Ex: 120363413477898100@g.us">' +
+            '<button class="btn outline small" data-act="addManualGroup">Adicionar</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="cards" style="gap:8px;">' +
+          (filtered.length ? filtered.map(function(g) {
+            var isSel = Boolean(state.selectedGroupIds[g.id]);
+            return '<div class="gitem ' + (isSel ? 'selected' : '') + '" data-act="toggleGroupSel" data-id="' + esc(g.id) + '">' +
+              '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="width:20px; height:20px; accent-color:var(--accent);">' +
+              '<div class="avatar">' + esc((g.name || 'G')[0].toUpperCase()) + '</div>' +
+              '<div class="t">' +
+                '<b>' + esc(g.name) + '</b>' +
+                '<small>' + (g.participants || 0) + ' membros · ' + esc(g.id) + '</small>' +
+              '</div>' +
+            '</div>';
+          }).join('') : '<div class="empty">Nenhum grupo encontrado.</div>') +
+        '</div>' +
+      '</div>' +
+      '<div class="foot">' +
+        '<button class="btn primary block" data-act="confirmGroups">' + ic('check', 16, 2.5) + ' Confirmar Seleção (' + selectedCount + ' grupos)</button>' +
+      '</div>';
+  }
+
+  var RENDER = {
+    home: renderHome,
+    hist: renderHist,
+    conn: renderConn,
+    novo: renderNovo,
+    grupos: renderGrupos
+  };
+
+  function show(name) {
+    state.screen = name;
+    document.querySelectorAll('.screen').forEach(function (s) {
+      s.hidden = s.id !== 's-' + name;
+    });
+    $('#nav').hidden = ['home', 'hist', 'conn'].indexOf(name) === -1;
+    RENDER[name]();
+    document.querySelectorAll('.tab').forEach(function (b) {
+      b.setAttribute('aria-current', b.dataset.tab === name ? 'page' : 'false');
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.dataset.act;
+
+    if (act === 'tab') show(btn.dataset.tab);
+    if (act === 'refresh') pollBackend();
+    if (act === 'new') {
+      state.draft = {
+        name: '',
+        targetGroups: state.groups.length ? [state.groups[0]] : [],
+        schedType: 'fixed',
+        schedValue: '08:00, 18:00',
+        caption: 'Relatório · {data} às {hora}',
+        active: true,
+        preventDuplicates: true
+      };
+      state.editingSlug = null;
+      show('novo');
+    }
+    if (act === 'edit') {
+      var s = btn.dataset.slug;
+      var d = state.dispatches.find(function(x) { return x.slug === s; });
+      if (!d) return;
+      state.draft = JSON.parse(JSON.stringify(d));
+      state.editingSlug = s;
+      show('novo');
+    }
+    if (act === 'back') show('home');
+    if (act === 'backToNovo') show('novo');
+    if (act === 'pickGroups') {
+      state.selectedGroupIds = {};
+      var cur = getDispatchGroups(state.draft);
+      cur.forEach(function(g) { state.selectedGroupIds[g.id] = true; });
+      show('grupos');
+    }
+    if (act === 'toggleGroupSel') {
+      var gid = btn.dataset.id;
+      state.selectedGroupIds[gid] = !state.selectedGroupIds[gid];
+      renderGrupos();
+    }
+    if (act === 'selectAllGroups') {
+      state.groups.forEach(function(g) { state.selectedGroupIds[g.id] = true; });
+      renderGrupos();
+    }
+    if (act === 'clearAllGroups') {
+      state.selectedGroupIds = {};
+      renderGrupos();
+    }
+    if (act === 'confirmGroups') {
+      var chosen = state.groups.filter(function(g) { return state.selectedGroupIds[g.id]; });
+      if (state.draft) {
+        state.draft.targetGroups = chosen;
+        if (chosen.length > 0) {
+          state.draft.groupJid = chosen[0].id;
+          state.draft.groupName = chosen[0].name;
+        }
+      }
+      show('novo');
+    }
+    if (act === 'removeGroupFromDraft') {
+      var gid = btn.dataset.id;
+      if (state.draft) {
+        state.draft.targetGroups = getDispatchGroups(state.draft).filter(function(g) { return g.id !== gid; });
+        renderNovo();
+      }
+    }
+    if (act === 'addManualGroup') {
+      var mi = $('#manualJid');
+      var val = (mi ? mi.value : '').trim();
+      if (!val) { toast('Informe um JID válido'); return; }
+      var customG = { id: val, name: 'Grupo ' + val.split('@')[0], participants: 1 };
+      state.groups.push(customG);
+      state.selectedGroupIds[val] = true;
+      if (mi) mi.value = '';
+      renderGrupos();
+    }
+    if (act === 'saveDraft') {
+      var nm = ($('#dispName') || {}).value || '';
+      var sc = ($('#dispSched') || {}).value || '';
+      var cp = ($('#dispCaption') || {}).value || '';
+      if (!nm.trim()) { toast('Informe o nome do disparo'); return; }
+      state.draft.name = nm.trim();
+      state.draft.schedValue = sc.trim();
+      state.draft.caption = cp;
+
+      api('/dispatches', { method: 'POST', body: JSON.stringify(state.draft) })
+        .then(function() {
+          toast('Disparo salvo com sucesso!');
+          pollBackend();
+          show('home');
+        })
+        .catch(function(err) { toast('Erro ao salvar: ' + err.message); });
+    }
+    if (act === 'testCard') {
+      var s = btn.dataset.slug;
+      toast('Disparando teste para os grupos...');
+      api('/send/' + s, { method: 'POST', body: JSON.stringify({ force: true }) })
+        .then(function(r) { toast(r.message || 'Disparado com sucesso!'); pollBackend(); })
+        .catch(function(e) { toast('Falha no teste: ' + e.message); });
+    }
+    if (act === 'toggle') {
+      var s = btn.dataset.slug;
+      var d = state.dispatches.find(function(x) { return x.slug === s; });
+      if (!d) return;
+      d.active = !d.active;
+      api('/dispatches/' + s, { method: 'PUT', body: JSON.stringify(d) })
+        .then(function() { pollBackend(); })
+        .catch(function(e) { toast('Erro ao alternar'); });
+    }
+    if (act === 'togglePriority') {
+      state.backgroundPriority = !state.backgroundPriority;
+      toast(state.backgroundPriority ? 'Prioridade total em 2º plano ATIVADA' : 'Serviço em 2º plano desativado');
+      renderConn();
+    }
+    if (act === 'requestBattery') {
+      toast('Solicitação de isenção de bateria aberta no sistema.');
+    }
+    if (act === 'clearHist') {
+      api('/history', { method: 'DELETE' }).then(function() { toast('Histórico limpo'); pollBackend(); });
+    }
+    if (act === 'resetSession') {
+      api('/reset-session', { method: 'POST' }).then(function() { toast('Sessão reiniciada.'); pollBackend(); });
+    }
+    if (act === 'reqCode') {
+      var pi = $('#phoneInput');
+      var num = pi ? pi.value : '';
+      api('/pair-code', { method: 'POST', body: JSON.stringify({ phone: num }) })
+        .then(function(r) { state.pairCode = r.code; toast('Código: ' + r.code); renderConn(); })
+        .catch(function(e) { toast('Erro: ' + e.message); });
+    }
+  });
+
+  document.addEventListener('input', function(e) {
+    if (e.target && e.target.id === 'groupSearchInput') {
+      state.groupFilter = e.target.value;
+      renderGrupos();
+    }
+  });
+
+  renderHome();
+})();
+</script>
+</body>
+</html>

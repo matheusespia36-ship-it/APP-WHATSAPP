@@ -1,0 +1,20 @@
+{
+  "name": "disparador-whatsapp",
+  "version": "1.0.0",
+  "description": "Disparador e agendador automático de relatórios e mensagens para grupos de WhatsApp com integração Baileys.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.13",
+    "pino": "^9.4.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  }
+}
