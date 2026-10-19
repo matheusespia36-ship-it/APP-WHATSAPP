@@ -331,6 +331,12 @@ function startScheduler() {
   }, 60000);
 }
 
+function stripFile(d) {
+  if (!d || !d.lastMessage) return d;
+  const { fileBase64, ...lm } = d.lastMessage;
+  return { ...d, lastMessage: lm };
+}
+
 async function route(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
