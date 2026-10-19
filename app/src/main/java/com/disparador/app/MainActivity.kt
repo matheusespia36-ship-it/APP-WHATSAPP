@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.disparador.app.model.AppScreen
+import com.disparador.app.node.NodeBridge
 import com.disparador.app.service.SchedulerForegroundService
 import com.disparador.app.ui.screens.*
 import com.disparador.app.ui.theme.*
@@ -47,6 +48,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Inicializa o motor Node.js nativo na abertura do aplicativo[span_0](start_span)[span_0](end_span)
+        NodeBridge.start(this)
+
         setContent {
             DisparadorTheme {
                 MainAppContent(viewModel = viewModel)
@@ -54,6 +58,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun MainAppContent(viewModel: MainViewModel) {
