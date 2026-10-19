@@ -76,7 +76,6 @@ fun MainAppContent(viewModel: MainViewModel) {
     val isEditing by viewModel.isEditing.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
 
-    // Solicita permissão de notificações no Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -94,17 +93,15 @@ fun MainAppContent(viewModel: MainViewModel) {
         }
     }
 
-    // Tratamento do botão Voltar do sistema
     BackHandler(enabled = currentScreen != AppScreen.HOME) {
         when (currentScreen) {
             AppScreen.PICK_GROUP -> viewModel.navigateTo(AppScreen.EDIT_DISPATCH)
             AppScreen.EDIT_DISPATCH -> viewModel.navigateTo(AppScreen.HOME)
             AppScreen.HISTORY, AppScreen.CONNECTION -> viewModel.navigateTo(AppScreen.HOME)
-            AppScreen.HOME -> { /* Sistema trata a saída */ }
+            AppScreen.HOME -> { /* Sistema trata o encerramento */ }
         }
     }
 
-    // Ocultar Toast automaticamente
     LaunchedEffect(toastMessage) {
         if (toastMessage != null) {
             delay(2800L)
@@ -266,7 +263,6 @@ fun MainAppContent(viewModel: MainViewModel) {
                 }
             }
 
-            // Floating Toast embutido
             AnimatedVisibility(
                 visible = toastMessage != null,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { 40 }),
