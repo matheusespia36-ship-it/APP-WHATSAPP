@@ -1,5 +1,10 @@
 package com.disparador.app.ui.screens
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -25,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.disparador.app.data.DispatchRepository
+import com.disparador.app.model.AttachedFile
 import com.disparador.app.model.Dispatch
 import com.disparador.app.model.SchedType
 import com.disparador.app.ui.theme.*
@@ -44,11 +51,52 @@ fun DispatchEditScreen(
     onTestNow: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var newTimeInput by remember { mutableStateOf("") }
     var showWindowDropdown by remember { mutableStateOf(false) }
     var showIntervalDropdown by remember { mutableStateOf(false) }
-    var showSampleFileSheet by remember { mutableStateOf(false) }
+
+    // Launcher do Seletor de Arquivos Reais
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { selectedUri: Uri? ->
+        selectedUri?.let { uri ->
+            var fileName = "documento"
+            var fileSize = 0L
+            val contentResolver = context.contentResolver
+
+            // Obtém nome e tamanho reais do arquivo
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (cursor.moveToFirst()) {
+                    if (nameIndex != -1) fileName = cursor.getString(nameIndex)
+                    if (sizeIndex != -1) fileSize = cursor.getLong(sizeIndex)
+                }
+            }
+
+            val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+
+            if (bytes != null) {
+                val base64Content = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                onUpdateDraft { current ->
+                    current.copy(
+                        attachedFile = AttachedFile(
+                            fileName = fileName,
+                            fileSize = if (fileSize > 0) fileSize else bytes.size.toLong(),
+                            mimetype = mimeType,
+                            fileHash = "",
+                            updatedAt = "",
+                            sampleContent = "",
+                            contentBase64 = base64Content
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     val timesList = remember(dispatch.schedValue) {
         if (dispatch.schedType == SchedType.FIXED) {
@@ -346,7 +394,8 @@ fun DispatchEditScreen(
                 }
             }
 
-            // Field: Attached File Section
+
+            // Field: Attached File Section (Com seletor real de arquivos)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -360,7 +409,7 @@ fun DispatchEditScreen(
                         fontWeight = FontWeight.Bold
                     )
                     OutlinedButton(
-                        onClick = { showSampleFileSheet = true },
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.height(32.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         shape = RoundedCornerShape(8.dp),
@@ -438,7 +487,7 @@ fun DispatchEditScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
-                                    onClick = { showSampleFileSheet = true },
+                                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                                     modifier = Modifier.weight(1f).height(34.dp),
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark, contentColor = ForegroundLight)
@@ -461,7 +510,7 @@ fun DispatchEditScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .clickable { showSampleFileSheet = true },
+                            .clickable { filePickerLauncher.launch(arrayOf("*/*")) },
                         color = SurfaceDark,
                         border = androidx.compose.foundation.BorderStroke(1.dp, LineBorder),
                         shape = RoundedCornerShape(14.dp)
@@ -486,13 +535,13 @@ fun DispatchEditScreen(
                                 )
                             }
                             Text(
-                                text = "Clique para escolher o arquivo",
+                                text = "Clique para escolher o arquivo real",
                                 color = ForegroundLight,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "Suporta relatórios Excel (.xlsx, .xls), PDF, Word (.docx) ou CSV.\nAo receber novo relatório com mesmo nome, ele substitui automaticamente.",
+                                text = "Suporta relatórios Excel (.xlsx, .xls), PDF, Word (.docx) ou CSV.\nO arquivo será carregado diretamente do armazenamento.",
                                 color = MutedText,
                                 fontSize = 12.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -644,7 +693,6 @@ fun DispatchEditScreen(
                     }
                 }
             }
-
             // Field: Schedule Type
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -654,7 +702,6 @@ fun DispatchEditScreen(
                     fontWeight = FontWeight.Bold
                 )
 
-                // Segmented buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -723,7 +770,6 @@ fun DispatchEditScreen(
                             }
                         }
 
-                        // Add time input
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -764,7 +810,6 @@ fun DispatchEditScreen(
                             }
                         }
 
-                        // Presets
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -790,7 +835,6 @@ fun DispatchEditScreen(
                         }
                     }
                 } else {
-                    // Interval dropdown
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(text = "Repetir envio a cada:", color = MutedText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         Box {
@@ -966,55 +1010,5 @@ fun DispatchEditScreen(
                 }
             }
         }
-    }
-
-    // Sample file selector bottom sheet dialog
-    if (showSampleFileSheet) {
-        AlertDialog(
-            onDismissRequest = { showSampleFileSheet = false },
-            title = { Text("Escolher Arquivo de Relatório", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = ForegroundLight) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Selecione o formato de relatório a ser despachado no grupo:", color = MutedText, fontSize = 13.sp)
-                    listOf(
-                        Triple("excel", "Planilha Excel (.xlsx)", "Relatório com tabelas e fórmulas"),
-                        Triple("pdf", "Documento PDF (.pdf)", "Relatório executivo diagramado"),
-                        Triple("csv", "Arquivo CSV (.csv)", "Dados tabulares de faturamento"),
-                        Triple("word", "Documento Word (.docx)", "Comunicado ou ata de reunião")
-                    ).forEach { (type, label, desc) ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    onAttachSample(type)
-                                    showSampleFileSheet = false
-                                },
-                            color = SurfaceVariantDark,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, LineBorder),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(imageVector = Icons.Default.Description, contentDescription = null, tint = AccentGreen, modifier = Modifier.size(20.dp))
-                                Column {
-                                    Text(label, color = ForegroundLight, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text(desc, color = MutedText, fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSampleFileSheet = false }) {
-                    Text("Cancelar", color = AccentGreen)
-                }
-            },
-            containerColor = SurfaceDark
-        )
     }
 }
