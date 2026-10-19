@@ -189,11 +189,12 @@ class MainViewModel(
     }
 
     fun requestPairCode(phone: String) {
-    viewModelScope.launch {
-        repository.requestPairingCode(phone).fold(
-            onSuccess = { showToast("Código gerado: $it") },
-            onFailure = { showToast("Falha: ${it.message}") }
-        )
+        viewModelScope.launch {
+            repository.requestPairingCode(phone).fold(
+                onSuccess = { showToast("Código gerado: $it") },
+                onFailure = { showToast("Falha: ${it.message}") }
+            )
+        }
     }
 
     fun resetSession() {
@@ -212,46 +213,51 @@ class MainViewModel(
     }
 
     fun testConnection() {
-    viewModelScope.launch {
-        repository.testConnection().fold(
-            onSuccess = { showToast(it) },
-            onFailure = { showToast("Falha: ${it.message}") }
-        )
+        viewModelScope.launch {
+            repository.testConnection().fold(
+                onSuccess = { showToast(it) },
+                onFailure = { showToast("Falha: ${it.message}") }
+            )
+        }
     }
 
-    fun toggleBackgroundPriority(enabled: Boolean, context: Context) {
+    fun toggleBackgroundPriority(enabled: Boolean, context: Context? = null) {
         repository.setBackgroundPriorityEnabled(enabled)
-        if (enabled) {
-            SchedulerForegroundService.start(context)
-            showToast("Prioridade total em segundo plano ATIVADA")
+        if (context != null) {
+            if (enabled) {
+                SchedulerForegroundService.start(context)
+                showToast("Prioridade total em segundo plano ATIVADA")
+            } else {
+                SchedulerForegroundService.stop(context)
+                showToast("Serviço em segundo plano desativado")
+            }
         } else {
-            SchedulerForegroundService.stop(context)
-            showToast("Serviço em segundo plano desativado")
+            showToast(if (enabled) "Prioridade em segundo plano ATIVADA" else "Serviço em segundo plano desativado")
         }
     }
 
     fun attachSampleReport(type: String) {
         val nowStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
         val (fileName, mime, size, sample) = when (type) {
-            "excel" -> Quadruple(
+            "excel" -> SampleData(
                 "relatorio_financeiro.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 256000L,
                 "Planilha de fechamento mensal"
             )
-            "pdf" -> Quadruple(
+            "pdf" -> SampleData(
                 "resumo_executivo.pdf",
                 "application/pdf",
                 512000L,
                 "Documento PDF executivo consolidado"
             )
-            "csv" -> Quadruple(
+            "csv" -> SampleData(
                 "extrato_pedidos.csv",
                 "text/csv",
                 98400L,
                 "Registros de pedidos por hora"
             )
-            else -> Quadruple(
+            else -> SampleData(
                 "comunicado_geral.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 142000L,
@@ -271,10 +277,31 @@ class MainViewModel(
         showToast("Arquivo \"$fileName\" anexado com sucesso")
     }
 
+    fun attachRealFile(fileName: String, base64Content: String) {
+        val nowStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+        val fileHash = DispatchRepository.computeSha256(base64Content)
+        val file = AttachedFile(
+            fileName = fileName,
+            fileSize = base64Content.length.toLong(),
+            mimetype = "application/octet-stream",
+            fileHash = fileHash,
+            updatedAt = nowStr,
+            sampleContent = "",
+            contentBase64 = base64Content
+        )
+        updateDraft { it.copy(attachedFile = file) }
+        showToast("Arquivo \"$fileName\" anexado com sucesso")
+    }
+
     fun removeDraftFile() {
         updateDraft { it.copy(attachedFile = null) }
         showToast("Arquivo removido do disparo")
     }
-
-    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 }
+
+private data class SampleData(
+    val fileName: String,
+    val mime: String,
+    val size: Long,
+    val sample: String
+)
