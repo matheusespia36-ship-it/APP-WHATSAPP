@@ -238,7 +238,7 @@ class MainViewModel(
 
     fun attachSampleReport(type: String) {
         val nowStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
-        val (fileName, mime, size, sample) = when (type) {
+        val sampleData = when (type) {
             "excel" -> SampleData(
                 "relatorio_financeiro.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -264,17 +264,17 @@ class MainViewModel(
                 "Memorando corporativo de rotina"
             )
         }
-        val fileHash = DispatchRepository.computeSha256(sample + nowStr)
+        val fileHash = DispatchRepository.computeSha256(sampleData.sample + nowStr)
         val file = AttachedFile(
-            fileName = fileName,
-            fileSize = size,
-            mimetype = mime,
+            fileName = sampleData.fileName,
+            fileSize = sampleData.size,
+            mimetype = sampleData.mime,
             fileHash = fileHash,
             updatedAt = nowStr,
-            sampleContent = sample
+            sampleContent = sampleData.sample
         )
         updateDraft { it.copy(attachedFile = file) }
-        showToast("Arquivo \"$fileName\" anexado com sucesso")
+        showToast("Arquivo \"${sampleData.fileName}\" anexado com sucesso")
     }
 
     fun attachRealFile(fileName: String, base64Content: String) {
