@@ -12,7 +12,8 @@ data class AttachedFile(
     val mimetype: String,
     val fileHash: String,
     val updatedAt: String,
-    val sampleContent: String = ""
+    val sampleContent: String = "",
+    val contentBase64: String? = null
 )
 
 data class WhatsAppGroup(
