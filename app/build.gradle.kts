@@ -15,6 +15,18 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 1. Limita a compilação para a arquitetura arm64-v8a do Moto G60
+        ndk {
+            abiFilters += setOf("arm64-v8a")
+        }
+
+        // 2. Define o argumento da biblioteca C++ partilhada para o CMake
+        externalNativeBuild {
+            cmake {
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
     }
 
     signingConfigs {
@@ -38,12 +50,22 @@ android {
             signingConfig = signingConfigs.getByName("debugConfig")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
+
     buildFeatures {
         compose = true
+    }
+
+    // 3. Aponta para o ficheiro CMakeLists.txt na pasta src/main/cpp/
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 
