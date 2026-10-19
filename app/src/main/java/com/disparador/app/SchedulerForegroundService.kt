@@ -3,6 +3,7 @@ package com.disparador.app.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -60,5 +61,19 @@ class SchedulerForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "scheduler_service_channel"
         private const val NOTIFICATION_ID = 1001
+
+        fun start(context: Context) {
+            val intent = Intent(context, SchedulerForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, SchedulerForegroundService::class.java)
+            context.stopService(intent)
+        }
     }
 }
