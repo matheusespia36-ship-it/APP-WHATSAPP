@@ -1,58 +1,68 @@
 #include <jni.h>
-#include <string>
-#include <cstdlib>
-#include <pthread.h>
+#include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <android/log.h>
-#include "node/node.h"
+#include "node.h"
 
-// Redireciona stdout e stderr do Node.js para o Logcat do Android
-static int pfd[2];
-static pthread_t log_thread;
-
-static void *log_thread_fn(void *arg) {
-    ssize_t read_size;
-    char buf[1024];
-    while ((read_size = read(pfd[0], buf, sizeof(buf) - 1)) > 0) {
-        if (buf[read_size - 1] == '\n') --read_size;
-        buf[read_size] = 0;
-        __android_log_write(ANDROID_LOG_INFO, "NODEJS-MOBILE", buf);
+#define LOG_TAG "NODEJS-MOBILE"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    if (pipe(pfd) != 0) return;
+    dup2(pfd[1], STDOUT_FILENO);
+    dup2(pfd[1], STDERR_FILENO);
+    if (pthread_create(&log_thread, nullptr, log_thread_fn, nullptr) == 0) {
+        pthread_detach(log_thread);
     }
-    return nullptr;
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_disparador_app_node_NodeBridge_nativeStart(JNIEnv *env, jobject /* this */, jobjectArray args) {
+Java_com_disparador_app_node_NodeBridge_nativeStart(JNIEnv* env, jobject, jobjectArray arguments) {
+    // Obtém o número de argumentos passados pelo Kotlin
+Java_com_disparador_app_node_NodeBridge_nativeStart(JNIEnv *env, jobject /* this */, jobjectArray arguments) {
+    redirect_stdio_to_logcat();
+
+    jsize argc = env->GetArrayLength(arguments);
     
-    // Configura os pipes de log
-    setvbuf(stderr, nullptr, _IONBF, 0);
-    if (pipe(pfd) == 0) {
-        dup2(pfd[1], STDOUT_FILENO);
-        dup2(pfd[1], STDERR_FILENO);
-        if (pthread_create(&log_thread, nullptr, log_thread_fn, nullptr) != 0) {
-            __android_log_write(ANDROID_LOG_ERROR, "NODEJS-MOBILE", "Falha ao criar thread de log");
-        }
-    }
-
-    // Processa os argumentos enviados pelo Kotlin
-    int argc = env->GetArrayLength(args);
-    char **argv = (char **) calloc(argc, sizeof(char *));
-
+    // Converte os argumentos de Java String Array para char** de C
+    char** argv = (char**)calloc(argc, sizeof(char*));
     for (int i = 0; i < argc; i++) {
-        jstring str = (jstring) env->GetObjectArrayElement(args, i);
-        const char *cstr = env->GetStringUTFChars(str, nullptr);
-        argv[i] = strdup(cstr);
-        env->ReleaseStringUTFChars(str, cstr);
+        jstring s = (jstring)env->GetObjectArrayElement(arguments, i);
+        const char* c = env->GetStringUTFChars(s, 0);
+        argv[i] = strdup(c);
+
+    // O Node/libuv exigem que os argumentos fiquem contíguos na memória.
+    size_t total = 0;
+    for (jsize i = 0; i < argc; i++) {
+        jstring s = (jstring) env->GetObjectArrayElement(arguments, i);
+        const char *c = env->GetStringUTFChars(s, nullptr);
+        total += strlen(c) + 1;
+        env->ReleaseStringUTFChars(s, c);
+        env->DeleteLocalRef(s);
+    }
+    
+    LOGI("A iniciar o motor Node.js embutido...");
+    
+    // Executa o Node.js enviando os argumentos (node, bootstrap.js, dataDir, tmpDir)
+    return jint(node::Start(argc, argv));
+
+    char *buf = (char *) calloc(total + 1, sizeof(char));
+    char **argv = (char **) calloc(argc + 1, sizeof(char *));
+    char *cur = buf;
+    for (jsize i = 0; i < argc; i++) {
+        jstring s = (jstring) env->GetObjectArrayElement(arguments, i);
+        const char *c = env->GetStringUTFChars(s, nullptr);
+        size_t len = strlen(c);
+        memcpy(cur, c, len);
+        cur[len] = '\0';
+        argv[i] = cur;
+        cur += len + 1;
+        env->ReleaseStringUTFChars(s, c);
+        env->DeleteLocalRef(s);
     }
 
-    // Inicia a engine Node.js
-    int result = node::Start(argc, argv);
-
-    // Libera a memoria dos argumentos
-    for (int i = 0; i < argc; i++) {
-        free(argv[i]);
+    // buf e argv NÃO são liberados: o Node usa esses ponteiros enquanto o processo viver.
+    return (jint) node::Start((int) argc, argv);
     }
-    free(argv);
-
-    return result;
-}
