@@ -189,12 +189,11 @@ class MainViewModel(
     }
 
     fun requestPairCode(phone: String) {
-        val code = repository.requestPairingCode(phone)
-        if (code.isNotEmpty()) {
-            showToast("Código gerado: $code")
-        } else {
-            showToast("Informe um número válido (ex: 5511999998888)")
-        }
+    viewModelScope.launch {
+        repository.requestPairingCode(phone).fold(
+            onSuccess = { showToast("Código gerado: $it") },
+            onFailure = { showToast("Falha: ${it.message}") }
+        )
     }
 
     fun resetSession() {
@@ -213,11 +212,11 @@ class MainViewModel(
     }
 
     fun testConnection() {
-        viewModelScope.launch {
-            repository.setWhatsAppStatus(WhatsAppStatus.OPEN)
-            repository.addLog("Teste de conexão bem-sucedido: WhatsApp operacional", LogType.OK)
-            showToast("WhatsApp conectado e operacional!")
-        }
+    viewModelScope.launch {
+        repository.testConnection().fold(
+            onSuccess = { showToast(it) },
+            onFailure = { showToast("Falha: ${it.message}") }
+        )
     }
 
     fun toggleBackgroundPriority(enabled: Boolean, context: Context) {
