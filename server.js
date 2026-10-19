@@ -304,14 +304,35 @@ function startScheduler() {
           ? { image: buf, mimetype: d.lastMessage.mimetype, caption: captionText }
           : { document: buf, mimetype: d.lastMessage.mimetype, fileName, caption: captionText };
 
-        for (const tg of targetGroups) {
-          try {
-            await sendToWhatsApp(tg.id, payload);
-            console.log(`[AGENDADOR] Enviado com sucesso para grupo: ${tg.name} (${tg.id})`);
-          } catch (err) {
-            console.error(`[ERRO AGENDADOR] Falha ao enviar para ${tg.name}:`, err.message);
-          }
-        }
+        const failed = [];
+for (const tg of targetGroups) {
+  try {
+    await sendToWhatsApp(tg.id, payload);
+    console.log(`[AGENDADOR] Enviado com sucesso para grupo: ${tg.name} (${tg.id})`);
+  } catch (err) {
+    failed.push(`${tg.name || tg.id}: ${err.message}`);
+    console.error(`[ERRO AGENDADOR] Falha ao enviar para ${tg.name}:`, err.message);
+  }
+}
+
+// Só marca o histórico/envio se pelo menos um grupo recebeu com sucesso
+if (failed.length < targetGroups.length) {
+  d.lastSentHash = fileHash;
+  d.lastSentName = fileName;
+  d.lastSentAt = new Date().toISOString();
+  await addHistory({
+    slug: d.slug,
+    name: d.name,
+    group: groupNames,
+    ok: failed.length === 0,
+    error: failed.length ? failed.join(' ') : undefined,
+    auto: true,
+    fileName,
+    groupsCount: targetGroups.length
+  });
+  await writeJson(DISPATCHES_FILE, dispatches);
+}
+        
 
         d.lastSentHash = fileHash;
         d.lastSentName = fileName;
