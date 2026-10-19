@@ -1,5 +1,8 @@
 package com.disparador.app.ui.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -34,6 +38,7 @@ import com.disparador.app.ui.theme.*
 fun ConnectionScreen(
     waStatus: WhatsAppStatus,
     pairingCode: String,
+    qrCode: String = "",
     serverUrl: String,
     apiToken: String,
     logs: List<LogEntry>,
@@ -220,7 +225,7 @@ fun ConnectionScreen(
 
             // If not connected: QR Code card & phone pairing
             if (waStatus != WhatsAppStatus.OPEN) {
-                // QR Box
+                // QR Box (Renderiza imagem Base64 real se disponível)
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = SurfaceDark,
@@ -238,7 +243,33 @@ fun ConnectionScreen(
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
-                        QRCodeVisual(sizeDp = 180)
+
+                        if (qrCode.isNotBlank()) {
+                            val cleanBase64 = remember(qrCode) { qrCode.substringAfter(",") }
+                            val bitmap = remember(cleanBase64) {
+                                try {
+                                    val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "QR Code de Autenticação WhatsApp",
+                                    modifier = Modifier
+                                        .size(180.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                            } else {
+                                QRCodeVisual(sizeDp = 180)
+                            }
+                        } else {
+                            QRCodeVisual(sizeDp = 180)
+                        }
+
                         Text(
                             text = "Abra o WhatsApp > Dispositivos Conectados > Conectar aparelho",
                             color = MutedText,
