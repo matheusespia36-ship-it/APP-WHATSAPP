@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Inicializa o motor Node.js nativo na abertura do aplicativo[span_0](start_span)[span_0](end_span)
+        // Inicializa o motor Node.js nativo na abertura do aplicativo
         NodeBridge.start(this)
 
         setContent {
@@ -58,7 +58,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 
 @Composable
 fun MainAppContent(viewModel: MainViewModel) {
@@ -77,7 +76,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val isEditing by viewModel.isEditing.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
 
-    // Request Notification permission for Android 13+
+    // Solicita permissão de notificações no Android 13+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -90,23 +89,22 @@ fun MainAppContent(viewModel: MainViewModel) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        // Auto-start foreground service if priority is enabled
         if (backgroundPriorityEnabled) {
             SchedulerForegroundService.start(context)
         }
     }
 
-    // Handle system back navigation
+    // Tratamento do botão Voltar do sistema
     BackHandler(enabled = currentScreen != AppScreen.HOME) {
         when (currentScreen) {
             AppScreen.PICK_GROUP -> viewModel.navigateTo(AppScreen.EDIT_DISPATCH)
             AppScreen.EDIT_DISPATCH -> viewModel.navigateTo(AppScreen.HOME)
             AppScreen.HISTORY, AppScreen.CONNECTION -> viewModel.navigateTo(AppScreen.HOME)
-            AppScreen.HOME -> { /* system handles exiting */ }
+            AppScreen.HOME -> { /* Sistema trata a saída */ }
         }
     }
 
-    // Auto-dismiss toast
+    // Ocultar Toast automaticamente
     LaunchedEffect(toastMessage) {
         if (toastMessage != null) {
             delay(2800L)
@@ -268,7 +266,7 @@ fun MainAppContent(viewModel: MainViewModel) {
                 }
             }
 
-            // In-app Floating Toast
+            // Floating Toast embutido
             AnimatedVisibility(
                 visible = toastMessage != null,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { 40 }),
