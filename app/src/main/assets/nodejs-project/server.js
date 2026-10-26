@@ -157,20 +157,13 @@ function getDispatchGroups(d) {
   return [];
 }
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-const wa = { status: MOCK ? 'open' : 'starting', qr: null, sock: null, store: null };
-const groupMetadataCache = new Map();
+const wa = { status: MOCK ? 'open' : 'starting', qr: null, sock: null };
 
 async function connectWhatsApp() {
-  const { default: makeWASocket, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion, DisconnectReason, makeInMemoryStore } = require('@whiskeysockets/baileys');
+  const { default: makeWASocket, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion, DisconnectReason } = require('@whiskeysockets/baileys');
   const pino = require('pino');
   const authPath = path.join(DATA_DIR, 'auth');
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
-
-  if (!wa.store) {
-    wa.store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
-  }
   
   let version;
   try {
@@ -193,30 +186,8 @@ async function connectWhatsApp() {
     browser: Browsers.ubuntu('Chrome'),
     logger: pino({ level: 'warn' }, logSink),
     connectTimeoutMs: 60000,
-    getMessage: async (key) => {
-      if (wa.store) {
-        const msg = await wa.store.loadMessage(key.remoteJid, key.id);
-        return msg?.message || undefined;
-      }
-      return undefined;
-    },
-    cachedGroupMetadata: async (jid) => {
-      const cached = groupMetadataCache.get(jid);
-      if (cached && (Date.now() - cached.ts) < 5 * 60 * 1000) {
-        return cached.data;
-      }
-      try {
-        const metadata = await sock.groupMetadata(jid);
-        groupMetadataCache.set(jid, { data: metadata, ts: Date.now() });
-        return metadata;
-      } catch (err) {
-        return cached?.data || undefined;
-      }
-    }
   });
-
   wa.sock = sock;
-  wa.store.bind(sock.ev);
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
@@ -333,34 +304,23 @@ function startScheduler() {
           ? { image: buf, mimetype: d.lastMessage.mimetype, caption: captionText }
           : { document: buf, mimetype: d.lastMessage.mimetype, fileName, caption: captionText };
 
-        const failed = [];
-        for (let i = 0; i < targetGroups.length; i++) {
-          const tg = targetGroups[i];
+        for (const tg of targetGroups) {
           try {
             await sendToWhatsApp(tg.id, payload);
             console.log(`[AGENDADOR] Enviado com sucesso para grupo: ${tg.name} (${tg.id})`);
           } catch (err) {
-            failed.push(`${tg.name || tg.id}: ${err.message}`);
             console.error(`[ERRO AGENDADOR] Falha ao enviar para ${tg.name}:`, err.message);
           }
-          if (i < targetGroups.length - 1) {
-            await sleep(2000); // 2s de intervalo anti-flood entre grupos
-          }
         }
 
-        // Atualiza status e registra histórico uma única vez
-        if (failed.length < targetGroups.length) {
-          d.lastSentHash = fileHash;
-          d.lastSentName = fileName;
-          d.lastSentAt = new Date().toISOString();
-        }
-
+        d.lastSentHash = fileHash;
+        d.lastSentName = fileName;
+        d.lastSentAt = new Date().toISOString();
         await addHistory({
           slug: d.slug,
           name: d.name,
           group: groupNames,
-          ok: failed.length === 0,
-          error: failed.length ? failed.join(' ') : undefined,
+          ok: true,
           auto: true,
           fileName,
           groupsCount: targetGroups.length
@@ -369,12 +329,6 @@ function startScheduler() {
       }
     }
   }, 60000);
-}
-
-function stripFile(d) {
-  if (!d || !d.lastMessage) return d;
-  const { fileBase64, ...lm } = d.lastMessage;
-  return { ...d, lastMessage: lm };
 }
 
 async function route(req, res) {
@@ -428,7 +382,7 @@ async function route(req, res) {
   }
   if (method === 'GET' && p === '/wa-logs') return json(res, 200, { ok: true, logs: waLogs });
   if (method === 'GET' && p === '/groups') return json(res, 200, { ok: true, groups: await listGroups() });
-  if (method === 'GET' && p === '/dispatches') return json(res, 200, { ok: true, dispatches: dispatches.map(stripFile) });
+  if (method === 'GET' && p === '/dispatches') return json(res, 200, { ok: true, dispatches });
   if (method === 'GET' && p === '/history') return json(res, 200, { ok: true, history });
   if (method === 'DELETE' && p === '/history') {
     history = [];
@@ -763,12 +717,8 @@ async function route(req, res) {
 
     // Enviar para todos os grupos de destino configurados
     if (targetGroups.length > 0) {
-      for (let i = 0; i < targetGroups.length; i++) {
-        const tg = targetGroups[i];
+      for (const tg of targetGroups) {
         await sendToWhatsApp(tg.id, payload);
-        if (i < targetGroups.length - 1) {
-          await sleep(2000); // 2s de intervalo anti-flood
-        }
       }
     } else {
       await sendToWhatsApp(body.groupJid || body.target, payload);
